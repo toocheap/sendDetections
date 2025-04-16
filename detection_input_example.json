@@ -1,0 +1,55 @@
+{
+  "options": {
+    "debug": true,
+    "summary": true
+  },
+  "data": [
+    {
+      "timestamp": "2023-01-01T12:00:00Z",
+      "ioc": {
+        "type": "ip",
+        "value": "192.168.1.100",
+        "source_type": "firewall",
+        "field": "src_ip"
+      },
+      "detection": {
+        "type": "correlation",
+        "id": "p_123456",
+        "name": "Suspicious Source IP Address"
+      },
+      "mitre_codes": ["T1046", "T1595"],
+      "malwares": ["Mimikatz"]
+    },
+    {
+      "ioc": {
+        "type": "domain",
+        "value": "malicious-example.com",
+        "source_type": "dns_logs"
+      },
+      "detection": {
+        "type": "detection_rule",
+        "sub_type": "sigma",
+        "id": "doc:ABC123",
+        "name": "Suspicious Domain Detection"
+      }
+    },
+    {
+      "ioc": {
+        "type": "hash",
+        "value": "44d88612fea8a8f36de82e1278abb02f",
+        "source_type": "endpoint"
+      },
+      "detection": {
+        "type": "playbook",
+        "id": "playbook_123",
+        "name": "Malware Hash Detection"
+      },
+      "incident": {
+        "id": "incident-2023-001",
+        "name": "Malware Detection Incident",
+        "type": "malware-alert"
+      },
+      "transient_id": "trans-12345"
+    }
+  ]
+}
