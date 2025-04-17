@@ -68,6 +68,77 @@ DEFAULT_HEADERS = {
 }
 ENV_TOKEN_KEY = "RF_API_TOKEN"  # Environment variable name
 
+class DetectionAPIClient:
+    """
+    Client for sending data to the Recorded Future Collective Insights Detection API.
+    Handles API requests, error handling, and response formatting.
+    """
+    def __init__(self, api_token: str, api_url: str = API_URL, headers: dict = DEFAULT_HEADERS):
+        self.api_token = api_token
+        self.api_url = api_url
+        self.headers = headers.copy()
+        self.headers["X-RFToken"] = api_token  # Add token to headers
+
+    def send_data(self, payload: Payload) -> APIResponse:
+        """Send data to API and handle errors"""
+        try:
+            response = requests.post(
+                self.api_url,
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()  # Raise exception for 4xx/5xx status codes
+            return cast(APIResponse, response.json())
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code
+            error_msg = ""
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("message", str(e))
+            except:
+                error_msg = str(e)
+            # Using Python 3.10+ match statement
+            match status_code:
+                case 400:
+                    print(f"Error (400): Bad Request: {error_msg}")
+                case 401:
+                    print(f"Error (401): Authentication failed. Check your API token: {error_msg}")
+                case 403:
+                    print(f"Error (403): Access denied: {error_msg}")
+                case 429:
+                    print(f"Error (429): Too many requests: {error_msg}")
+                case 500:
+                    print(f"Error (500): Server internal error: {error_msg}")
+                case _:
+                    print(f"Error ({status_code}): {error_msg}")
+            sys.exit(1)
+        except requests.exceptions.ConnectionError:
+            print("Error: Cannot connect to API server. Check your internet connection.")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: An unexpected error occurred while sending data: {str(e)}")
+            sys.exit(1)
+
+    def format_response(self, response: APIResponse) -> None:
+        """Format and display API response"""
+        print("\n=== API Response ===")
+        print(f"Status: Success")
+        if summary := response.get("summary"):
+            print("\n=== Submission Summary ===")
+            print(f"IoCs submitted: {summary.get('submitted', 0)}")
+            print(f"IoCs processed: {summary.get('processed', 0)}")
+            if (dropped := summary.get("dropped", 0)) > 0:
+                print(f"IoCs dropped: {dropped}")
+                if transient_ids := summary.get("transient_ids"):
+                    print("\nDropped transaction IDs:")
+                    for t_id in transient_ids:
+                        print(f"- {t_id}")
+        # Display warning if debug mode is enabled
+        if response.get("options", {}).get("debug", False):
+            print("\nNote: Debug mode is enabled. Data will not be saved to Recorded Future Intelligence Cloud.")
+        print("\nComplete.")
+
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Send data to Recorded Future Collective Insights Detection API')
@@ -78,18 +149,24 @@ def parse_arguments():
     return parser.parse_args()
 
 def load_json_file(file_path: str) -> Payload:
-    """Load JSON file"""
+    """
+    Load JSON file and return as Payload.
+    Handles JSON decode errors, file not found, and generic exceptions with clear messages.
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return cast(Payload, json.load(f))
-    except json.JSONDecodeError:
-        print(f"Error: File '{file_path}' is not a valid JSON format.")
-        sys.exit(1)
-    except FileNotFoundError:
-        print(f"Error: File '{file_path}' not found.")
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        # Handle specific JSON and file not found errors
+        error_type = type(e).__name__
+        if isinstance(e, json.JSONDecodeError):
+            print(f"Error: File '{file_path}' is not a valid JSON format.")
+        else:
+            print(f"Error: File '{file_path}' not found.")
         sys.exit(1)
     except Exception as e:
-        print(f"Error: An error occurred while reading file '{file_path}': {str(e)}")
+        # Handle any other exceptions
+        print(f"Error: An unexpected error occurred while reading file '{file_path}': {str(e)}")
         sys.exit(1)
 
 def validate_payload(payload: Payload) -> Optional[str]:
@@ -141,70 +218,6 @@ def ensure_debug_mode(payload: Payload, debug_enabled: bool) -> Payload:
     
     return payload
 
-def send_data(payload: Payload, api_token: str) -> APIResponse:
-    """Send data to API"""
-    headers = DEFAULT_HEADERS.copy()
-    headers["X-RFToken"] = api_token
-    
-    try:
-        response = requests.post(API_URL, json=payload, headers=headers)
-        response.raise_for_status()  # Raise exception for 4xx/5xx status codes
-        return cast(APIResponse, response.json())
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code
-        error_msg = ""
-        
-        try:
-            error_data = e.response.json()
-            error_msg = error_data.get("message", str(e))
-        except:
-            error_msg = str(e)
-        
-        # Using Python 3.10+ match statement
-        match status_code:
-            case 400:
-                print(f"Error (400): Bad Request: {error_msg}")
-            case 401:
-                print(f"Error (401): Authentication failed. Check your API token: {error_msg}")
-            case 403:
-                print(f"Error (403): Access denied: {error_msg}")
-            case 429:
-                print(f"Error (429): Too many requests: {error_msg}")
-            case 500:
-                print(f"Error (500): Server internal error: {error_msg}")
-            case _:
-                print(f"Error ({status_code}): {error_msg}")
-        sys.exit(1)
-    except requests.exceptions.ConnectionError:
-        print("Error: Cannot connect to API server. Check your internet connection.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: An unexpected error occurred while sending data: {str(e)}")
-        sys.exit(1)
-
-def format_response(response: APIResponse) -> None:
-    """Format and display API response"""
-    print("\n=== API Response ===")
-    print(f"Status: Success")
-    
-    if summary := response.get("summary"):
-        print("\n=== Submission Summary ===")
-        print(f"IoCs submitted: {summary.get('submitted', 0)}")
-        print(f"IoCs processed: {summary.get('processed', 0)}")
-        
-        if (dropped := summary.get("dropped", 0)) > 0:
-            print(f"IoCs dropped: {dropped}")
-            
-            if transient_ids := summary.get("transient_ids"):
-                print("\nDropped transaction IDs:")
-                for t_id in transient_ids:
-                    print(f"- {t_id}")
-    
-    # Display warning if debug mode is enabled
-    if response.get("options", {}).get("debug", False):
-        print("\nNote: Debug mode is enabled. Data will not be saved to Recorded Future Intelligence Cloud.")
-    
-    print("\nComplete.")
 
 def get_api_token(args) -> str:
     """
@@ -263,12 +276,15 @@ def main():
         print("Error: No API token provided.")
         sys.exit(1)
     
+    # Create API client
+    api_client = DetectionAPIClient(api_token)
+
     # Send data
     print(f"Sending data to Recorded Future Collective Insights API...")
-    response = send_data(payload, api_token)
-    
+    response = api_client.send_data(payload)
+
     # Display response
-    format_response(response)
+    api_client.format_response(response)
 
 if __name__ == "__main__":
     main()
