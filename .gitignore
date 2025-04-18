@@ -68,6 +68,7 @@ coverage.xml
 
 # Sample/output files
 sample/rf_export*.csv
+sample/rf_export*.json
 sample/*.json
 
 # Test/output artifacts
