@@ -79,6 +79,14 @@ class Options(TypedDict, total=False):
     debug: bool
     summary: bool
 
+class IoC(TypedDict, total=False):
+    type: str
+    value: str
+
+class Detection(TypedDict, total=False):
+    type: str
+    name: str
+
 class DataEntry(TypedDict, total=False):
     ioc: IoC
     detection: Detection
