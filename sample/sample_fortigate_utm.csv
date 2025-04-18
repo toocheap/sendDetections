@@ -1,0 +1,4 @@
+Entity ID,Entity,Risk Score at Detection,Current Risk Score,Source,Description,Detectors,Malware,Mitre Codes,Event Source,Event ID,Detection Time
+ip:120.25.190.37,120.25.190.37,,39,Soufyane Sassi,Default IP risklist,Correlation,Cobalt Strike,"TA0011, TA0002",fortigate_utm,,2024-06-23T20:19:40.855Z
+ip:120.25.190.37,120.25.190.37,,39,Soufyane Sassi,Cobalt Strike Hunt #1,Correlation,Cobalt Strike,"TA0011, TA0002",fortigate_utm,,2024-06-23T18:35:45.187Z
+ip:120.25.190.37,120.25.190.37,,39,Soufyane Sassi,Cobalt Strike Hunt #1,Correlation,Cobalt Strike,"TA0011, TA0002",fortigate_utm,,2024-06-23T18:35:45.187Z
