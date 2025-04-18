@@ -14,7 +14,7 @@ import argparse
 import sys
 import os
 from pathlib import Path
-from typing import TypedDict, List, Dict
+from typing import TypedDict, List, Dict, Optional
 from dotenv import load_dotenv
 from sendDetections.csv_converter import CSVConverter
 from sendDetections.api_client import DetectionApiClient
