@@ -21,7 +21,7 @@ from sendDetections.api_client import DetectionApiClient
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="CSV→Payload JSON変換＆Detection API送信")
-    parser.add_argument("--convert", action="store_true", help="Convert all CSV files in sample/ to JSON")
+    parser.add_argument("--convert", nargs="?", metavar="CSV", help="Convert all CSV files in sample/ to JSON, or a specified CSV file if provided.")
     parser.add_argument("--send", type=str, nargs="*", help="Send specified JSON file(s) to Detection API")
     parser.add_argument("--convert-send", action="store_true", help="Convert and send all CSVs in sample/")
     parser.add_argument("--token", type=str, help="Recorded Future API Token (or use .env RF_API_TOKEN)")
@@ -37,7 +37,14 @@ def main():
         print("[ERROR] Specify at least one mode: --convert, --send, or --convert-send")
         sys.exit(1)
     converter = CSVConverter()
-    if args.convert or args.convert_send:
+    if args.convert:
+        if isinstance(args.convert, str):
+            # Convert only the specified CSV file
+            converter.convert_csv_to_payload_json(Path(args.convert), Path(args.convert).with_suffix('.json'))
+        else:
+            # Convert all sample/*.csv
+            converter.run()
+    if args.convert_send:
         converter.run()
     if args.send or args.convert_send:
         # Determine target JSON files
