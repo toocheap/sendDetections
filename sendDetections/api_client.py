@@ -63,5 +63,7 @@ class DetectionApiClient:
             print("Error: Cannot connect to API server. Check your internet connection.")
             sys.exit(1)
         except Exception as e:
+            import traceback
             print(f"Error: An unexpected error occurred while sending data: {str(e)}")
+            traceback.print_exc()
             sys.exit(1)
