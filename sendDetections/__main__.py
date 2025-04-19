@@ -11,6 +11,7 @@ import asyncio
 import traceback
 import logging
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -20,6 +21,8 @@ from sendDetections.async_api_client import AsyncApiClient
 from sendDetections.batch_processor import BatchProcessor
 from sendDetections.config import SAMPLE_DIR
 from sendDetections.logging_config import configure_logging
+from sendDetections.exporters import ResultExporter
+from sendDetections.error_analyzer import ErrorAnalyzer, ErrorCollection
 from sendDetections.errors import (
     SendDetectionsError, ApiError, ApiAuthenticationError,
     ApiRateLimitError, ApiServerError, ApiConnectionError,
@@ -117,6 +120,27 @@ def setup_argparse():
         "--metrics-file",
         type=str,
         help="Path to save performance metrics (default: auto-generated)"
+    )
+    batch_parser.add_argument(
+        "--export-results",
+        action="store_true",
+        help="Export processing results to files"
+    )
+    batch_parser.add_argument(
+        "--export-dir",
+        type=str,
+        help="Directory for exported results (default: current directory)"
+    )
+    batch_parser.add_argument(
+        "--export-format",
+        choices=["json", "csv", "html", "all"],
+        default="all",
+        help="Export format for results (default: all)"
+    )
+    batch_parser.add_argument(
+        "--analyze-errors",
+        action="store_true",
+        help="Analyze errors and provide suggestions"
     )
     convert_parser.add_argument(
         "files", 
@@ -424,10 +448,22 @@ async def handle_batch_command(args) -> int:
         total_processed = 0
         total_dropped = 0
         
-        # Setup metrics export options
+        # Collection of all results for potential export
+        all_results = []
+        
+        # Error collection for analysis
+        error_collection = ErrorCollection()
+        
+        # Setup export options
         metrics_file = None
         if args.metrics_file:
             metrics_file = Path(args.metrics_file)
+            
+        # Setup results exporter if needed
+        results_exporter = None
+        if args.export_results:
+            export_dir = args.export_dir
+            results_exporter = ResultExporter(export_dir=export_dir)
         
         # Process JSON files
         if json_files:
@@ -449,6 +485,14 @@ async def handle_batch_command(args) -> int:
                            summary.get("submitted", 0),
                            summary.get("processed", 0),
                            summary.get("dropped", 0))
+                           
+                # Add to results collection
+                all_results.append(json_result)
+                
+                # Record any errors for analysis
+                if args.analyze_errors and "errors" in json_result:
+                    for error in json_result.get("errors", []):
+                        error_collection.add_error(error, {"source": "json_processing"})
         
         # Process CSV files
         if csv_files:
@@ -470,10 +514,88 @@ async def handle_batch_command(args) -> int:
                            summary.get("submitted", 0),
                            summary.get("processed", 0),
                            summary.get("dropped", 0))
+                           
+                # Add to results collection
+                all_results.append(csv_result)
+                
+                # Record any errors for analysis
+                if args.analyze_errors and "errors" in csv_result:
+                    for error in csv_result.get("errors", []):
+                        error_collection.add_error(error, {"source": "csv_processing"})
         
         # Total summary
         logger.info("Total: %d submitted, %d processed, %d dropped",
                    total_submitted, total_processed, total_dropped)
+        
+        # Export results if requested
+        if args.export_results and results_exporter and all_results:
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                base_filename = f"senddetections_{timestamp}"
+                
+                # Get errors for export
+                errors_list = error_collection.get_errors()
+                
+                # Export based on format
+                export_format = args.export_format.lower()
+                
+                if export_format == "json" or export_format == "all":
+                    json_path = results_exporter.export_json(
+                        {"results": all_results, "summary": {
+                            "total_submitted": total_submitted,
+                            "total_processed": total_processed,
+                            "total_dropped": total_dropped
+                        }},
+                        filename=f"{base_filename}.json"
+                    )
+                    logger.info("Results exported to JSON: %s", json_path)
+                
+                if export_format == "csv" or export_format == "all":
+                    csv_path = results_exporter.export_summary_csv(
+                        all_results,
+                        filename=f"{base_filename}_summary.csv"
+                    )
+                    logger.info("Summary exported to CSV: %s", csv_path)
+                    
+                    if errors_list:
+                        errors_path = results_exporter.export_errors_csv(
+                            errors_list,
+                            filename=f"{base_filename}_errors.csv"
+                        )
+                        logger.info("Errors exported to CSV: %s", errors_path)
+                
+                if export_format == "html" or export_format == "all":
+                    report_path = results_exporter.generate_report(
+                        all_results,
+                        errors_list,
+                        filename=f"{base_filename}_report.html"
+                    )
+                    logger.info("HTML report generated: %s", report_path)
+                    
+            except Exception as e:
+                logger.error("Error exporting results: %s", str(e))
+        
+        # Analyze errors if requested
+        if args.analyze_errors and error_collection.error_count > 0:
+            try:
+                analysis_result = error_collection.analyze()
+                
+                # Print error analysis report
+                print("\nError Analysis Report:")
+                print("======================")
+                print(analysis_result["report"])
+                
+                # Export error analysis if exporting results
+                if args.export_results and results_exporter:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    analysis_path = results_exporter.export_json(
+                        analysis_result,
+                        filename=f"error_analysis_{timestamp}.json"
+                    )
+                    logger.info("Error analysis exported to: %s", analysis_path)
+                    
+            except Exception as e:
+                logger.error("Error analyzing errors: %s", str(e))
                    
         return 0 if total_processed > 0 else 1
         
