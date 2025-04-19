@@ -52,50 +52,31 @@ sendDetections/
 
 ### Example (both are equivalent)
 ```sh
-python3 sendDetections.py convert
-python3 -m sendDetections convert
+python3 sendDetections.py submit sample/*.csv
+python3 -m sendDetections submit sample/*.csv
 ```
 - Both commands provide the same CLI functionality.
 - The main logic is implemented in the `sendDetections/` package.
 - `sendDetections.py` is a CLI wrapper for convenience.
 
-### 1. Convert all CSVs in `sample/` to JSON
+### 1. Submit detections from CSV or JSON files
 ```sh
-python3 sendDetections.py convert
-# or
-python3 -m sendDetections convert
-```
-
-### 2. Submit a JSON file to the API
-```sh
-python3 sendDetections.py send sample/sample_common.json --token <YOUR_API_TOKEN>
+python3 sendDetections.py submit sample/*.csv --token <YOUR_API_TOKEN>
+python3 sendDetections.py submit sample/*.json --token <YOUR_API_TOKEN>
+python3 sendDetections.py submit sample/*.csv sample/*.json --token <YOUR_API_TOKEN>
 ```
 - You can omit `--token` if you set `RF_API_TOKEN` in your environment or `.env` file.
 - Add `--debug` to enable debug mode (data will not be submitted to the cloud).
+- The command automatically detects file types and processes them appropriately.
 
-### 3. Convert and submit all in batch
+### 2. Submit with advanced options
 ```sh
-python3 sendDetections.py convert-send --token <YOUR_API_TOKEN>
+python3 sendDetections.py submit sample/*.csv --concurrent 10 --batch-size 200 --export-results
 ```
+- Process files concurrently with custom parameters
+- Export results for analysis
 
-### 4. Process multiple files concurrently (legacy batch command)
-```sh
-python3 sendDetections.py batch sample/*.json --token <YOUR_API_TOKEN> --export-results
-```
-
-### 5. New unified "submit" command (recommended)
-```sh
-# Automatically handles both CSV and JSON files
-python3 sendDetections.py submit sample/*.csv sample/*.json --token <YOUR_API_TOKEN> 
-
-# Process with detailed output options
-python3 sendDetections.py submit sample/*.csv --export-results --analyze-errors
-```
-- The submit command automatically detects file types and processes them appropriately
-- It combines the functionality of convert, send, and batch commands
-- Provides a simpler interface with the same powerful features
-
-### 6. Visualize results with interactive dashboard
+### 3. Visualize results with interactive dashboard
 ```sh
 python3 sendDetections.py visualize results_20230622_112233.json
 ```
@@ -117,12 +98,6 @@ pytest tests/
 - `submit [files]`          Submit detections (from CSV or JSON files) to RF Intelligence Cloud
 - `organizations`           List available organizations (for multi-org setups)
 - `visualize <file>`        Launch interactive dashboard for visualizing results
-
-### Legacy Commands (for backward compatibility)
-- `convert [files]`         Convert CSV files to JSON payload format
-- `send <files>`            Submit JSON files to the Detection API
-- `convert-send [files]`    Convert and send CSV files
-- `batch <files>`           Process multiple files with efficient concurrent batch processing
 
 ### Common Options
 - `--token, -t <TOKEN>`     Specify API token (overrides environment/.env/config file)
@@ -278,11 +253,9 @@ python3 sendDetections.py submit --concurrent 10 --batch-size 200 --max-retries 
 # With configuration file
 python3 sendDetections.py submit sample/*.json --config my-config.yml --profile prod
 
-# Legacy commands (still supported)
-python3 sendDetections.py convert
-python3 sendDetections.py send sample/sample_common.json --token sk-xxx
-python3 sendDetections.py convert-send --debug
-python3 sendDetections.py batch sample/*.json --export-results
+# Other commands
+python3 sendDetections.py organizations  # List available organizations
+python3 sendDetections.py visualize results_20230622_112233.json  # View analysis dashboard
 
 # With visualization
 python3 sendDetections.py visualize export_20230622_112233.json
