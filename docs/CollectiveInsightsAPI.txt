@@ -1,0 +1,135 @@
+Submit indicator detections from security tools to your organisation's Recorded Future enterprise. Collective Insights enriches submissions with Recorded Future intelligence to provide your organisation's enterprise with enhanced and actionable intelligence.
+
+Usage Details
+Limit: 15000 submissions per day
+Organisations using Collective Insights benefit by having their Recorded Future intelligence enhanced by shared data. In addition, non-attributable data from their submissions can be used to benefit other Recorded Future clients.
+Prerequisites
+Recorded Future module license
+Recorded Future API token for Collective Insights API
+Request API Token
+ 
+
+Collective Insights API Reference
+Collective Insights API - OpenAPI specification
+
+
+/detections (POST)
+Send indicator of compromise detections to Recorded Future Intelligence Cloud. Submissions are associated with the integration user's enterprise and are used to provide enhance intelligence and analytics specific to your enterprise
+
+Parameters
+
+Options (optional)
+Configuration parameters
+
+debug (bool)
+Whether submissions are saved to Recorded Future Intelligence Cloud
+
+true (default value)
+Do not save submissions to Recorded Future Intelligence Cloud (for development and testing)
+
+false
+Save submissions to Recorded Future Intelligence Cloud
+
+summary (boolean)
+Whether response includes a summary for each submitted indicator
+true (default value)
+Response includes a summary for each submitted indicator
+false
+Response will not include a summary for each submitted indicator
+organization_ids (array, optional)
+Organizations related to submitted indicator detections
+data (required)
+List or array of indicators of compromise detections
+timestamp (str, optional)
+Timestamp in ISO 8601 format, for the day and time when the indicator was detected
+Default value (If omitted): timestamp of when the API request was sent
+ioc (required)
+type (str, enum)
+Possible values: ip, domain, hash, vulnerability, url
+value (str)
+Detected indicator of compromise
+Example value (for type ip): 8.8.8.8
+source_type (optional)
+Log source where the detection was made (Known as Event Source in the Recorded Future portal)
+field (optional)
+Log/event field containing the indicator
+ incident (optional)
+Link indicator to an incident
+id (str)
+Example value: "28548e09-63e8-4f8b-abd4-be86207b1583"
+name (str)
+Example value: "Triggered Detection Rule"
+type (str)
+Example value: "splunk-detection-rule"
+mitre_codes (list, optional)
+MITRE codes associated with indicator
+malwares (list, optional)
+Malware associated with indicator
+detection (required)
+Indicator detection method
+id
+Value depends on the type property
+If type: correlation
+id is the correlation's id (starts with "p_" or "h_")
+If type: detection_rule
+id is the id of the Recorded Future Analyst note that has the detection rule as an attachment.
+Example value: doc:XYZ
+If type: playbook
+id is the playbook's id
+type (str, enum)
+How the IOC was detected
+Possible values: correlation, playbook, detection_rule, or sandbox
+sub_type (required if type: detection_rule)
+Possible values: "sigma", "yara", or "snort"
+name (optional)
+Name of the detection
+id (optional)
+ 
+
+Example API request 
+{
+   "options": {
+      "debug": true,
+      "summary": true
+   },
+   "organization_ids": [
+      "uhash:T2j9L"
+   ],
+   "data": [
+      {
+         "timestamp": "2023-01-01T10:00:00Z",
+         "ioc": {
+            "type": "ip",
+            "value": "1.2.3.4"
+            "source_type": "netscreen:firewall"
+         },
+         "incident": {
+            "id": "28548e09-63e8-4f8b-abd4-be86207b1583",
+            "name": "Triggered Detection Rule",
+            "type": "splunk-detection-rule"
+         },
+         "mitre_codes": [
+            "T1055"
+         ],
+         "malwares": [
+            "Stuxnet"
+         ],
+         "detection": {
+            "type": "detection_rule",
+            "sub_type": "sigma"
+            "id" : "doc:r1U_LB"
+            "name" : "Priority Malware Detection"
+         }
+      }
+   ]
+}
+ 
+HTTP Response Codes
+200
+API call was successful
+401
+Unauthorized (invalid API Token)
+403
+Forbidden (API Token does not have the required permissions)
+500
+Internal server error (API service is experiencing issues)

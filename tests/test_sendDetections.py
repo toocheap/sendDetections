@@ -2,8 +2,10 @@ import json
 import tempfile
 from pathlib import Path
 import pytest
-from sendDetections.api_client import DetectionApiClient
-from sendDetections.csv_converter import CSVConverter
+import requests
+from sendDetections.api_client import DetectionApiClient, ApiError
+from sendDetections.csv_converter import CSVConverter, CSVConversionError
+from sendDetections.validators import validate_payload
 
 SAMPLE_CSV = """Entity ID,Entity,Detectors,Description,Malware,Mitre Codes,Event Source,Event ID,Detection Time
 ip:1.2.3.4,1.2.3.4,detector_a,Test detection,malware1,MITRE-123,source_a,evt-001,2025-04-18T00:00:00Z
@@ -12,14 +14,12 @@ ip:1.2.3.4,1.2.3.4,detector_a,Test detection,malware1,MITRE-123,source_a,evt-001
 def csv_to_payload(csv_path: Path) -> dict:
     """Helper for test: convert CSV to payload dict using CSVConverter."""
     converter = CSVConverter()
-    with csv_path.open(encoding="utf-8") as f:
-        import csv as _csv
-        reader = _csv.DictReader(f)
-        data = [converter.csv_row_to_dataentry(row) for row in reader]
-    payload = {"data": data}
-    err = converter.validate_payload(payload)
-    assert err is None, f"Payload validation failed: {err}"
-    return payload
+    try:
+        payload = converter.csv_to_payload(csv_path)
+        return payload
+    except CSVConversionError as e:
+        pytest.fail(f"CSV conversion failed: {str(e)}")
+        return {}
 
 def test_csv_to_payload_conversion():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -35,9 +35,34 @@ def test_csv_to_payload_conversion():
         assert payload["data"][0]["timestamp"] == "2025-04-18T00:00:00Z"
 
 def test_payload_validation():
-    # ...（省略：既存のテスト内容はそのまま）...
+    # Test validation
     # No data field
-    assert "'data' is missing" in DetectionApiClient.validate_payload({})
+    assert "Validation error at 'data'" in validate_payload({})
+    
+    # Empty data array
+    assert "Validation error at 'data'" in validate_payload({"data": []})
+    
+    # Missing IoC type
+    payload = {
+        "data": [
+            {
+                "ioc": {"value": "1.2.3.4"},
+                "detection": {"type": "detector_a"}
+            }
+        ]
+    }
+    assert "Validation error at 'data.0.ioc.type'" in validate_payload(payload)
+    
+    # Missing detection.sub_type for detection_rule
+    payload = {
+        "data": [
+            {
+                "ioc": {"type": "ip", "value": "1.2.3.4"},
+                "detection": {"type": "detection_rule"}
+            }
+        ]
+    }
+    assert "sub_type" in validate_payload(payload)
 
 def test_send_data_success(monkeypatch):
     """
@@ -66,7 +91,9 @@ def test_send_data_success(monkeypatch):
         assert headers["X-RFToken"] == api_token
         return MockResponse()
     monkeypatch.setattr("requests.post", mock_post)
-    resp = DetectionApiClient.send_data(payload, api_token)
+    
+    api_client = DetectionApiClient(api_token)
+    resp = api_client.send_data(payload)
     assert resp["summary"]["submitted"] == 1
     assert resp["options"]["debug"] is False
 
@@ -84,9 +111,7 @@ def test_send_data_http_error(monkeypatch):
         ]
     }
     api_token = "dummy-token"
-    class MockHTTPError(Exception):
-        def __init__(self, response):
-            self.response = response
+    
     class MockResponse:
         status_code = 400
         def raise_for_status(self):
@@ -96,7 +121,9 @@ def test_send_data_http_error(monkeypatch):
     def mock_post(url, json, headers, **kwargs):
         return MockResponse()
     monkeypatch.setattr("requests.post", mock_post)
-    import sys
-    import pytest
-    with pytest.raises(SystemExit):
-        DetectionApiClient.send_data(payload, api_token)
+    
+    api_client = DetectionApiClient(api_token)
+    with pytest.raises(ApiError) as excinfo:
+        api_client.send_data(payload)
+    
+    assert "Bad Request" in str(excinfo.value)

@@ -1,103 +1,250 @@
-from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+CSVConverter:
+Convert CSV files into JSON payloads for the Detection API.
+"""
+
 import csv
 import json
+import logging
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple, Iterator
+
+from sendDetections.config import SAMPLE_DIR, CSV_PATTERN, CSV_ENCODING
+from sendDetections.validators import validate_payload
+
+# Configure logger
+logger = logging.getLogger(__name__)
+
+class CSVConversionError(Exception):
+    """Error occurred during CSV conversion."""
+    pass
+
 
 class CSVConverter:
     """
-    A class to convert CSV files to Payload JSON format.
-    Includes payload validation to ensure compatibility with Detection API requirements.
+    Converts CSV rows to API payload entries.
     """
-    # --- Settings ---
-    SAMPLE_DIR = Path(__file__).parent.parent / 'sample'
-    CSV_PATTERN = 'sample_*.csv'
-    CSV_ENCODING = 'utf-8'
+    def __init__(
+        self, 
+        input_dir: Optional[Path] = None,
+        output_dir: Optional[Path] = None,
+        csv_pattern: str = CSV_PATTERN,
+        encoding: str = CSV_ENCODING
+    ):
+        """
+        Initialize CSV converter with configurable paths.
+        
+        Args:
+            input_dir: Directory containing CSV files (defaults to SAMPLE_DIR)
+            output_dir: Directory for output JSON files (defaults to same as input_dir)
+            csv_pattern: Glob pattern for matching CSV files
+            encoding: File encoding for reading/writing
+        """
+        self.input_dir = input_dir or SAMPLE_DIR
+        self.output_dir = output_dir or self.input_dir
+        self.csv_pattern = csv_pattern
+        self.encoding = encoding
+    
+    def find_csv_files(self) -> List[Path]:
+        """
+        Find CSV files matching the pattern in the input directory.
+        
+        Returns:
+            List of Path objects for matching CSV files
+        """
+        return sorted(self.input_dir.glob(self.csv_pattern))
+    
+    def csv_to_payload(self, csv_path: Path) -> Dict[str, Any]:
+        """
+        Read a CSV file and build a payload dict.
+        
+        Args:
+            csv_path: Path to the CSV file
+            
+        Returns:
+            Dictionary containing the API payload
+            
+        Raises:
+            CSVConversionError: On file access or validation errors
+        """
+        try:
+            with csv_path.open(encoding=self.encoding) as f:
+                reader = csv.DictReader(f)
+                data = []
+                
+                for row_num, row in enumerate(reader, start=1):
+                    try:
+                        entry = self._row_to_entry(row)
+                        data.append(entry)
+                    except Exception as e:
+                        raise CSVConversionError(f"Error in row {row_num}: {str(e)}")
+                
+            payload = {"data": data}
+            
+            # Validate the payload
+            if (error := validate_payload(payload)):
+                raise CSVConversionError(f"Payload validation failed: {error}")
+                
+            return payload
+            
+        except (IOError, UnicodeDecodeError) as e:
+            raise CSVConversionError(f"Failed to read CSV file: {str(e)}")
+            
+    def convert_file(self, csv_path: Path, json_path: Optional[Path] = None) -> Path:
+        """
+        Convert a single CSV file to JSON.
+        
+        Args:
+            csv_path: Path to CSV file
+            json_path: Optional output JSON path (defaults to same name with .json extension)
+            
+        Returns:
+            Path to the generated JSON file
+            
+        Raises:
+            CSVConversionError: On conversion errors
+        """
+        if json_path is None:
+            json_path = self.output_dir / csv_path.with_suffix('.json').name
+            
+        try:
+            payload = self.csv_to_payload(csv_path)
+            
+            # Ensure output directory exists
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with json_path.open('w', encoding=self.encoding) as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+                
+            logger.info(f"Converted {csv_path.name} -> {json_path.name}")
+            return json_path
+            
+        except Exception as e:
+            raise CSVConversionError(f"Failed to convert {csv_path.name}: {str(e)}")
 
-    # --- Column name constants ---
-    COL_ENTITY_ID = 'Entity ID'
-    COL_ENTITY = 'Entity'
-    COL_DETECTORS = 'Detectors'
-    COL_DESCRIPTION = 'Description'
-    COL_MALWARE = 'Malware'
-    COL_MITRE_CODES = 'Mitre Codes'
-    COL_EVENT_SOURCE = 'Event Source'
-    COL_EVENT_ID = 'Event ID'
-    COL_DETECTION_TIME = 'Detection Time'
+    def run(self) -> List[Path]:
+        """
+        Batch-convert all matching CSVs to JSON files.
+        
+        Returns:
+            List of paths to generated JSON files
+        """
+        csv_files = self.find_csv_files()
+        json_files = []
+        
+        if not csv_files:
+            logger.warning(f"No CSV files found matching '{self.csv_pattern}' in {self.input_dir}")
+            return []
+            
+        for csv_file in csv_files:
+            try:
+                json_path = self.convert_file(csv_file)
+                json_files.append(json_path)
+            except CSVConversionError as e:
+                logger.error(str(e))
+                
+        return json_files
 
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def validate_payload(payload: Dict[str, Any]) -> Optional[str]:
-        if "data" not in payload:
-            return "Required field 'data' is missing from the payload."
-        if not isinstance(payload["data"], list) or len(payload["data"]) == 0:
-            return "'data' field must be a non-empty array."
-        for i, entry in enumerate(payload["data"]):
-            ioc = entry.get("ioc")
-            if not isinstance(ioc, dict):
-                return f"Data entry {i+1}: 'ioc' must be a dictionary."
-            if not ioc.get("type"):
-                return f"Data entry {i+1}: Required field 'type' is missing from 'ioc'."
-            if not ioc.get("value"):
-                return f"Data entry {i+1}: Required field 'value' is missing from 'ioc'."
-            detection = entry.get("detection")
-            if not isinstance(detection, dict):
-                return f"Data entry {i+1}: 'detection' must be a dictionary."
-            if not detection.get("type"):
-                return f"Data entry {i+1}: Required field 'type' is missing from 'detection'."
-        return None
-
-    def parse_ioc_type_and_value(self, entity_id: str, entity: str) -> Tuple[str, str]:
+    def _row_to_entry(self, row: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Map a CSV row to a payload entry.
+        
+        Args:
+            row: CSV row as dictionary
+            
+        Returns:
+            Entry for the API payload
+            
+        Raises:
+            ValueError: On invalid or missing required data
+        """
+        # Parse IOC type and value
+        entity_id = row.get('Entity ID', '')
+        filename = row.get('Source', '')  # Source column might contain type info
+        
+        # Determine IoC type and value
         if ':' in entity_id:
+            # Format: "type:value"
             ioc_type, ioc_value = entity_id.split(':', 1)
-            return ioc_type, ioc_value
-        return '', entity
-
-    def csv_row_to_dataentry(self, row: Dict[str, str]) -> Dict[str, Any]:
-        ioc_type, ioc_value = self.parse_ioc_type_and_value(row.get(self.COL_ENTITY_ID, ''), row.get(self.COL_ENTITY, ''))
-        entry = {
-            "ioc": {
-                "type": ioc_type,
-                "value": ioc_value
+        else:
+            # Fallback to Entity column or try to infer type from filename
+            ioc_value = row.get('Entity', entity_id)
+            
+            # Try to infer type from filename or Source column
+            if "ip" in filename.lower():
+                ioc_type = "ip"
+            elif "domain" in filename.lower():
+                ioc_type = "domain"
+            elif "hash" in filename.lower():
+                ioc_type = "hash"
+            elif "url" in filename.lower():
+                ioc_type = "url"
+            elif "vuln" in filename.lower():
+                ioc_type = "vulnerability"
+            else:
+                ioc_type = ""  # Empty type will fail validation
+        
+        # Validate required fields
+        if not ioc_type:
+            raise ValueError("IoC type is required but could not be determined")
+            
+        if not ioc_value:
+            raise ValueError("IoC value is required but missing")
+            
+        detector_type = row.get('Detectors', '')
+        if not detector_type:
+            raise ValueError("Detection type ('Detectors' column) is required but missing")
+        
+        # Base entry
+        entry: Dict[str, Any] = {
+            'ioc': {
+                'type': ioc_type, 
+                'value': ioc_value
             },
-            "detection": {
-                "type": row.get(self.COL_DETECTORS, '') or '',
-                "name": row.get(self.COL_DESCRIPTION, '') or ''
+            'detection': {
+                'type': detector_type,
+                'name': row.get('Description', ''),
             },
-            "timestamp": row.get(self.COL_DETECTION_TIME, '') or ''
         }
-        malware = [m.strip() for m in row.get(self.COL_MALWARE, '').split(',') if m.strip()]
-        if malware:
-            entry["malwares"] = malware
-        mitre_codes = [m.strip() for m in row.get(self.COL_MITRE_CODES, '').split(',') if m.strip()]
-        if mitre_codes:
-            entry["mitre_codes"] = mitre_codes
-        incident = {}
-        if row.get(self.COL_EVENT_SOURCE, ''):
-            incident['type'] = row[self.COL_EVENT_SOURCE]
-        if row.get(self.COL_EVENT_ID, ''):
-            incident['id'] = row[self.COL_EVENT_ID]
+        
+        # Add timestamp if present
+        if timestamp := row.get('Detection Time', ''):
+            entry['timestamp'] = timestamp
+            
+        # Add source_type to IoC if present
+        if source_type := row.get('Source Type', ''):
+            entry['ioc']['source_type'] = source_type
+            
+        # Optional detection sub_type (required for detection_rule)
+        if sub_type := row.get('Sub Type', ''):
+            entry['detection']['sub_type'] = sub_type
+            
+        # Optional detection ID
+        if detection_id := row.get('Detection ID', ''):
+            entry['detection']['id'] = detection_id
+        
+        # Optional malware list
+        malwares = [m.strip() for m in row.get('Malware', '').split(',') if m.strip()]
+        if malwares:
+            entry['malwares'] = malwares
+            
+        # Optional MITRE codes
+        codes = [c.strip() for c in row.get('Mitre Codes', '').split(',') if c.strip()]
+        if codes:
+            entry['mitre_codes'] = codes
+            
+        # Optional incident
+        incident: Dict[str, str] = {}
+        if event_source := row.get('Event Source', ''):
+            incident['type'] = event_source
+        if event_id := row.get('Event ID', ''):
+            incident['id'] = event_id
+        if event_name := row.get('Event Name', ''):
+            incident['name'] = event_name
         if incident:
             entry['incident'] = incident
+            
         return entry
-
-    def convert_csv_to_payload_json(self, csv_path: Path, json_path: Path) -> None:
-        try:
-            with csv_path.open(encoding=self.CSV_ENCODING) as f:
-                reader = csv.DictReader(f)
-                data = [self.csv_row_to_dataentry(row) for row in reader]
-            payload = {"data": data}
-            err = self.validate_payload(payload)
-            if err:
-                raise ValueError(f"Payload validation failed: {err}")
-            with json_path.open('w', encoding=self.CSV_ENCODING) as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
-            print(f"Converted {csv_path.name} -> {json_path.name}")
-        except Exception as e:
-            raise Exception(f"[ERROR] {csv_path.name}: {e}")
-
-    def run(self):
-        for csv_file in self.SAMPLE_DIR.glob(self.CSV_PATTERN):
-            json_file = self.SAMPLE_DIR / (csv_file.stem + '.json')
-            self.convert_csv_to_payload_json(csv_file, json_file)

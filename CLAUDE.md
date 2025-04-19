@@ -3,20 +3,23 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
-- Run script: `python3 sendDetection_script.py detection_input_example.json`
-- Run with debug flag: `python3 sendDetection_script.py detection_input_example.json --debug`
-- Linting: `pylint sendDetection_script.py`
-- Type checking: `mypy sendDetection_script.py`
+- Run script: `python3 sendDetections.py convert sample/sample_common.csv`
+- Run send: `python3 sendDetections.py send detection_input_example.json --token <TOKEN>`
+- Run convert-send: `python3 sendDetections.py convert-send --debug`
+- Run tests: `pytest tests/`
+- Run single test: `pytest tests/test_sendDetections.py::test_csv_to_payload_conversion`
+- Linting: `pylint sendDetections/`
+- Type checking: `mypy sendDetections/`
 
 ## Code Style Guidelines
-- Imports: Group standard library, third-party, and local imports in that order with a blank line between groups
-- Types: Use type hints with mypy-compatible annotations from typing module
-- Function docstrings: Use triple-quote docstrings for all functions
-- Error handling: Use try/except blocks with specific exception types and descriptive error messages
-- Constants: Use UPPERCASE for constants
-- Naming: Use snake_case for variables and functions
-- JSON handling: Validate payload structure with explicit checks
-- API tokens: Never hardcode tokens; use environment variables or secure user input
+- Imports: Group standard library, third-party, and local imports with blank lines between groups
+- Types: Use type hints with full annotations from typing module (Dict, List, Optional, etc.)
+- Function docstrings: Use triple-quote docstrings with Args/Returns/Raises sections
+- Error handling: Use specific exception types with descriptive error messages
+- Class structure: Implement business logic in classes with clear methods and responsibilities
+- Naming: Use snake_case for variables/functions, PascalCase for classes, UPPER_CASE for constants
+- JSON payload: Validate with Pydantic models from validators.py
+- API tokens: Use environment variables or .env file via python-dotenv
 
 ## CollectiveInsights API detail
 Submit indicator detections from security tools to your organisation's Recorded Future enterprise. Collective Insights enriches submissions with Recorded Future intelligence to provide your organisation's enterprise with enhanced and actionable intelligence.

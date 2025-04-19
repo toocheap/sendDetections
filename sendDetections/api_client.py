@@ -1,69 +1,140 @@
-from typing import Optional, TypedDict, Any, Dict, cast
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+API client for Recorded Future Collective Insights Detection API.
+"""
+
+import logging
+from typing import Any, Dict, Optional, Union, cast
+
 import requests
-import sys
+from pydantic import ValidationError
 
-API_URL = "https://api.recordedfuture.com/v2/detection/submit"
-DEFAULT_HEADERS = {"Content-Type": "application/json"}
+from sendDetections.config import API_URL, DEFAULT_HEADERS, DEFAULT_API_OPTIONS
+from sendDetections.validators import validate_payload, ApiPayload
 
-Payload = Dict[str, Any]
-APIResponse = Dict[str, Any]
+# Configure logger
+logger = logging.getLogger(__name__)
+
+class ApiError(Exception):
+    """API-related error with status code and message."""
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
+
 
 class DetectionApiClient:
-    @staticmethod
-    def validate_payload(payload: Payload) -> Optional[str]:
-        if "data" not in payload:
-            return "Required field 'data' is missing from the payload."
-        if not isinstance(payload["data"], list) or len(payload["data"]) == 0:
-            return "'data' field must be a non-empty array."
-        for i, entry in enumerate(payload["data"]):
-            ioc = entry.get("ioc")
-            if not isinstance(ioc, dict):
-                return f"Data entry {i+1}: 'ioc' must be a dictionary."
-            if not ioc.get("type"):
-                return f"Data entry {i+1}: Required field 'type' is missing from 'ioc'."
-            if not ioc.get("value"):
-                return f"Data entry {i+1}: Required field 'value' is missing from 'ioc'."
-            detection = entry.get("detection")
-            if not isinstance(detection, dict):
-                return f"Data entry {i+1}: 'detection' must be a dictionary."
-            if not detection.get("type"):
-                return f"Data entry {i+1}: Required field 'type' is missing from 'detection'."
-        return None
+    """
+    Client for sending data to Recorded Future Collective Insights Detection API.
+    """
 
+    def __init__(self, api_token: str, api_url: Optional[str] = None):
+        """
+        Initialize the API client.
+        
+        Args:
+            api_token: Recorded Future API token
+            api_url: Optional custom API URL (overrides config)
+        """
+        self.api_token = api_token
+        self.api_url = api_url or API_URL
+        self.headers = {**DEFAULT_HEADERS, "X-RFToken": api_token}
+    
     @staticmethod
-    def send_data(payload: Payload, api_token: str) -> APIResponse:
+    def validate_payload(payload: Dict[str, Any]) -> Optional[str]:
+        """
+        Validate a payload dict. Returns an error message if invalid, else None.
+        """
+        return validate_payload(payload)
+
+    def add_default_options(self, payload: Dict[str, Any], debug: bool = False) -> Dict[str, Any]:
+        """
+        Add default options to payload if not present.
+        
+        Args:
+            payload: The API payload to augment
+            debug: Whether to enable debug mode (overrides payload)
+            
+        Returns:
+            Updated payload with options
+        """
+        # Make a copy to avoid modifying the original
+        result = payload.copy()
+        
+        # Apply DEFAULT_API_OPTIONS if options not present
+        if "options" not in result:
+            result["options"] = DEFAULT_API_OPTIONS.copy()
+            
+        # Override debug flag if specified
+        if debug:
+            if "options" not in result:
+                result["options"] = {}
+            result["options"]["debug"] = True
+            
+        return result
+
+    def send_data(self, payload: Dict[str, Any], debug: bool = False) -> Dict[str, Any]:
+        """
+        Send data to the API.
+        
+        Args:
+            payload: The data payload to send
+            debug: Whether to enable debug mode
+            
+        Returns:
+            API response as a dictionary
+            
+        Raises:
+            ApiError: On API errors (HTTP status codes, connection issues)
+            ValidationError: On invalid payload structure
+        """
+        # Pre-send validation
+        if (error := validate_payload(payload)):
+            raise ValidationError(error, ApiPayload)
+
+        # Apply default options and debug flag
+        payload = self.add_default_options(payload, debug)
+        
         try:
-            headers = DEFAULT_HEADERS | {"X-RFToken": api_token}
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+            logger.debug(f"Sending request to {self.api_url}")
+            response = requests.post(
+                self.api_url, 
+                headers=self.headers, 
+                json=payload, 
+                timeout=30
+            )
             response.raise_for_status()
-            return cast(APIResponse, response.json())
+            return cast(Dict[str, Any], response.json())
+            
         except requests.exceptions.HTTPError as e:
             status_code = e.response.status_code
-            error_msg = ""
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("message", str(e))
             except Exception:
                 error_msg = str(e)
-            match status_code:
-                case 400:
-                    print(f"Error (400): Bad Request: {error_msg}")
-                case 401:
-                    print(f"Error (401): Authentication failed. Check your API token: {error_msg}")
-                case 403:
-                    print(f"Error (403): Access denied: {error_msg}")
-                case 429:
-                    print(f"Error (429): Too many requests: {error_msg}")
-                case 500:
-                    print(f"Error (500): Server internal error: {error_msg}")
-                case _:
-                    print(f"Error ({status_code}): {error_msg}")
-            sys.exit(1)
-        except requests.exceptions.ConnectionError:
-            print("Error: Cannot connect to API server. Check your internet connection.")
-            sys.exit(1)
+                
+            # Map status codes to more descriptive messages
+            status_messages = {
+                400: f"Bad Request: {error_msg}",
+                401: f"Authentication failed: {error_msg}",
+                403: f"Access denied: {error_msg}",
+                429: f"Too many requests: {error_msg}",
+                500: f"Server internal error: {error_msg}"
+            }
+            
+            message = status_messages.get(status_code, f"HTTP Error {status_code}: {error_msg}")
+            logger.error(f"API error: {message}")
+            raise ApiError(message, status_code)
+            
+        except requests.exceptions.ConnectionError as e:
+            message = f"Cannot connect to API server: {e}"
+            logger.error(message)
+            raise ApiError(message)
+            
         except Exception as e:
-            import traceback
-            print(f"Error: An unexpected error occurred while sending data: {str(e)}")
-            traceback.print_exc()
-            sys.exit(1)
+            message = f"Unexpected error: {e}"
+            logger.error(message)
+            raise ApiError(message)

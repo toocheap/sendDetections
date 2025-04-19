@@ -40,8 +40,8 @@ sendDetections/
 
 ### Example (both are equivalent)
 ```sh
-python3 sendDetections.py --convert
-python3 -m sendDetections --convert
+python3 sendDetections.py convert
+python3 -m sendDetections convert
 ```
 - Both commands provide the same CLI functionality.
 - The main logic is implemented in the `sendDetections/` package.
@@ -49,21 +49,21 @@ python3 -m sendDetections --convert
 
 ### 1. Convert all CSVs in `sample/` to JSON
 ```sh
-python3 sendDetections.py --convert
+python3 sendDetections.py convert
 # or
-python3 -m sendDetections --convert
+python3 -m sendDetections convert
 ```
 
 ### 2. Submit a JSON file to the API
 ```sh
-python3 sendDetections.py --send sample/sample_common.json --token <YOUR_API_TOKEN>
+python3 sendDetections.py send sample/sample_common.json --token <YOUR_API_TOKEN>
 ```
 - You can omit `--token` if you set `RF_API_TOKEN` in your environment or `.env` file.
 - Add `--debug` to enable debug mode (data will not be submitted to the cloud).
 
 ### 3. Convert and submit all in batch
 ```sh
-python3 sendDetections.py --convert-send --token <YOUR_API_TOKEN>
+python3 sendDetections.py convert-send --token <YOUR_API_TOKEN>
 ```
 
 ---
@@ -76,36 +76,24 @@ pytest tests/
 ---
 
 ## Command-Line Options
-- `--convert`         Convert all CSVs in `sample/` to JSON (no API submission)
-- `--send <JSON>`     Submit a specified JSON file to the API
-- `--convert-send`    Convert all CSVs and submit all resulting JSON files
-- `--token <TOKEN>`   Specify API token (overrides environment/.env)
-- `--debug`           Enable debug mode (data not saved to cloud)
+- `convert [files]`         Convert CSV files to JSON payload format
+- `send <files>`            Submit JSON files to the Detection API
+- `convert-send [files]`    Convert and send CSV files
+- `--token <TOKEN>`         Specify API token (overrides environment/.env)
+- `--env-file <PATH>`       Specify custom .env file
+- `--debug`                 Enable debug mode (data not saved to cloud)
+- `--verbose`               Enable verbose output
 
 ## Notes
-- Only one of `--convert`, `--send`, or `--convert-send` can be used at a time.
 - The script expects the CSV columns to match the provided sample structure.
 - For details on the payload format, see the code or example JSON files.
 
 ## About the `scripts/` Directory
 The `scripts/` directory contains legacy or experimental scripts. These are not required for normal usage, but may be useful for reference or ad-hoc tasks. The main logic for CSV conversion and API submission is in the `sendDetections/` package.
 
-## Command-Line Options
-- `--convert`         Convert all CSVs in `sample/` to JSON (no API submission)
-- `--send <JSON>`     Submit a specified JSON file to the API
-- `--convert-send`    Convert all CSVs and submit all resulting JSON files
-- `--token <TOKEN>`   Specify API token (overrides environment/.env)
-- `--env-file <PATH>` Specify custom .env file
-- `--debug`           Enable debug mode (data not saved to cloud)
-
-## Notes
-- Only one of `--convert`, `--send`, or `--convert-send` can be used at a time.
-- The script expects the CSV columns to match the provided sample structure.
-- For details on the payload format, see the code or example JSON files.
-
 ## Example
 ```
-python3 sendDetections.py --convert
-python3 sendDetections.py --send sample/sample_common.json --token sk-xxx
-python3 sendDetections.py --convert-send --debug
+python3 sendDetections.py convert
+python3 sendDetections.py send sample/sample_common.json --token sk-xxx
+python3 sendDetections.py convert-send --debug
 ```
