@@ -78,12 +78,24 @@ python3 sendDetections.py send sample/sample_common.json --token <YOUR_API_TOKEN
 python3 sendDetections.py convert-send --token <YOUR_API_TOKEN>
 ```
 
-### 4. Process multiple files concurrently
+### 4. Process multiple files concurrently (legacy batch command)
 ```sh
 python3 sendDetections.py batch sample/*.json --token <YOUR_API_TOKEN> --export-results
 ```
 
-### 5. Visualize results with interactive dashboard
+### 5. New unified "submit" command (recommended)
+```sh
+# Automatically handles both CSV and JSON files
+python3 sendDetections.py submit sample/*.csv sample/*.json --token <YOUR_API_TOKEN> 
+
+# Process with detailed output options
+python3 sendDetections.py submit sample/*.csv --export-results --analyze-errors
+```
+- The submit command automatically detects file types and processes them appropriately
+- It combines the functionality of convert, send, and batch commands
+- Provides a simpler interface with the same powerful features
+
+### 6. Visualize results with interactive dashboard
 ```sh
 python3 sendDetections.py visualize results_20230622_112233.json
 ```
@@ -100,18 +112,44 @@ pytest tests/
 ---
 
 ## Command-Line Options
+
+### Main Commands
+- `submit [files]`          Submit detections (from CSV or JSON files) to RF Intelligence Cloud
+- `organizations`           List available organizations (for multi-org setups)
+- `visualize <file>`        Launch interactive dashboard for visualizing results
+
+### Legacy Commands (for backward compatibility)
 - `convert [files]`         Convert CSV files to JSON payload format
 - `send <files>`            Submit JSON files to the Detection API
 - `convert-send [files]`    Convert and send CSV files
 - `batch <files>`           Process multiple files with efficient concurrent batch processing
-- `visualize <file>`        Launch interactive dashboard for visualizing results
-- `--token <TOKEN>`         Specify API token (overrides environment/.env/config file)
-- `--debug`                 Enable debug mode (data not saved to cloud)
+
+### Common Options
+- `--token, -t <TOKEN>`     Specify API token (overrides environment/.env/config file)
+- `--debug, -d`             Enable debug mode (data not saved to cloud)
 - `--config <PATH>`         Specify a custom configuration file
 - `--profile <NAME>`        Use a specific profile from the configuration file (default: "default")
+
+### Logging Options
 - `--log-level <LEVEL>`     Set logging level (debug, info, warning, error, critical)
 - `--log-file <PATH>`       Write logs to specified file
 - `--json-logs`             Output logs in JSON format
+- `--no-progress`           Disable progress bars
+
+### Processing Options (for submit command)
+- `--concurrent, -c <N>`    Maximum number of concurrent requests (default: 5)
+- `--batch-size, -b <N>`    Maximum number of detections per batch (default: 100)
+- `--max-retries, -r <N>`   Maximum number of retry attempts (default: 3)
+- `--no-retry`              Disable automatic retries on API errors
+- `--org-id <ID>`           Organization ID to associate with the detections (for multi-org setups)
+
+### Export Options
+- `--export-results`        Export processing results to files
+- `--export-dir <DIR>`      Directory for exported results (default: current directory)
+- `--export-format <FMT>`   Export format: json, csv, html, all (default: all)
+- `--export-metrics`        Export performance metrics to a JSON file
+- `--metrics-file <FILE>`   Path to save performance metrics (default: auto-generated)
+- `--analyze-errors`        Analyze errors and provide suggestions
 
 ## Configuration File Support
 
@@ -224,15 +262,28 @@ The `scripts/` directory contains legacy or experimental scripts. These are not 
 
 ## Examples
 ```sh
-# Basic usage
+# New simplified submit command 
+python3 sendDetections.py submit sample/*.csv sample/*.json --token sk-xxx
+python3 sendDetections.py submit --input-dir data/ --debug
+
+# With organization ID (for multi-org setups)
+python3 sendDetections.py submit sample/*.csv --org-id uhash:T2j9L
+
+# With export options
+python3 sendDetections.py submit sample/*.json --export-results --analyze-errors
+
+# With custom processing parameters
+python3 sendDetections.py submit --concurrent 10 --batch-size 200 --max-retries 5
+
+# With configuration file
+python3 sendDetections.py submit sample/*.json --config my-config.yml --profile prod
+
+# Legacy commands (still supported)
 python3 sendDetections.py convert
 python3 sendDetections.py send sample/sample_common.json --token sk-xxx
 python3 sendDetections.py convert-send --debug
-
-# With configuration file
-python3 sendDetections.py batch sample/*.json --config my-config.yml --profile prod
+python3 sendDetections.py batch sample/*.json --export-results
 
 # With visualization
-python3 sendDetections.py batch sample/*.json --export-results
 python3 sendDetections.py visualize export_20230622_112233.json
 ```
