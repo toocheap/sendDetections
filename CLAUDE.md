@@ -6,6 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Process CSV files: `python3 sendDetections.py sample/sample_common.csv`
 - Process JSON files: `python3 sendDetections.py detection_input_example.json --token <TOKEN>`
 - Process with debug mode: `python3 sendDetections.py sample/*.csv --debug`
+- Process with options: `python3 sendDetections.py sample/*.csv --concurrent 10 --batch-size 200`
+
+## UX Changes (2024-04-19)
+A significant UX improvement was made to simplify the command-line interface:
+1. Removed subcommands structure (`submit`, `organizations`)
+2. Made file processing the default behavior
+3. Removed organization listing functionality as the API doesn't exist
+
+Before:
+```
+python3 sendDetections.py submit sample/*.csv
+python3 sendDetections.py organizations --list
+```
+
+After:
+```
+python3 sendDetections.py sample/*.csv
+# Organization IDs must be known in advance and specified with --org-id
+```
+
+See CHANGELOG.md for more details about this change.
 - Run tests: `pytest tests/`
 - Run single test: `pytest tests/test_sendDetections.py::test_csv_to_payload_conversion`
 - Linting: `pylint sendDetections/`
