@@ -3,9 +3,9 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
-- Run script: `python3 sendDetections.py convert sample/sample_common.csv`
-- Run send: `python3 sendDetections.py send detection_input_example.json --token <TOKEN>`
-- Run convert-send: `python3 sendDetections.py convert-send --debug`
+- Process CSV files: `python3 sendDetections.py sample/sample_common.csv`
+- Process JSON files: `python3 sendDetections.py detection_input_example.json --token <TOKEN>`
+- Process with debug mode: `python3 sendDetections.py sample/*.csv --debug`
 - Run tests: `pytest tests/`
 - Run single test: `pytest tests/test_sendDetections.py::test_csv_to_payload_conversion`
 - Linting: `pylint sendDetections/`

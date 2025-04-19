@@ -32,7 +32,6 @@ from sendDetections.errors import (
 # Set up logger
 logger = logging.getLogger("sendDetections")
 
-
 def setup_argparse():
     """
     Set up command-line argument parsing.
@@ -170,22 +169,6 @@ def setup_argparse():
     )
     
     return parser
-
-
-# Legacy command handler removed
-
-
-# Legacy command handler removed
-
-
-# Legacy command handler removed
-
-
-# Visualization command handler removed
-
-
-# Legacy command handler removed
-
 
 async def handle_submit_command(args) -> int:
     """
@@ -427,10 +410,6 @@ async def handle_submit_command(args) -> int:
         logger.error("Unexpected error during submission: %s", str(e), exc_info=True)
         return 1
 
-
-# Organizations listing function removed
-
-
 def main() -> int:
     """
     Main entry point for the sendDetections module.
@@ -481,7 +460,6 @@ def main() -> int:
     except Exception as e:
         logger.critical("Unhandled exception: %s", str(e), exc_info=True)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
