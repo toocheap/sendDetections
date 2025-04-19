@@ -8,6 +8,9 @@
   "batch_size": 100,
   "max_retries": 3,
   
+  "_comment_org": "Multi-organization settings (remove _ to activate)",
+  "_organization_id": "uhash:T2j9L",
+  
   "sample_dir": "sample",
   "csv_pattern": "sample_*.csv",
   "csv_encoding": "utf-8",
@@ -37,6 +40,13 @@
       "max_concurrent": 10,
       "batch_size": 200,
       "max_retries": 5
+    },
+    "org1": {
+      "api_url": "https://api.recordedfuture.com/collective-insights/detections",
+      "organization_id": "uhash:T2j9L",
+      "max_concurrent": 5,
+      "batch_size": 100,
+      "max_retries": 3
     }
   }
 }

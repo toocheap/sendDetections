@@ -43,7 +43,116 @@ def setup_argparse():
         description="CSV to JSON Converter and Recorded Future Detection API Client"
     )
     
-    # Common parameters
+    # Files to process (primary parameter)
+    parser.add_argument(
+        "files", 
+        nargs="*", 
+        help="Files to process (CSV or JSON, defaults to all CSVs in sample/ if none specified)"
+    )
+    
+    # API and authentication options
+    parser.add_argument(
+        "--token", "-t",
+        help="API token (overrides RF_API_TOKEN env var)"
+    )
+    parser.add_argument(
+        "--debug", "-d",
+        action="store_true",
+        help="Enable debug mode (data will not be saved to RF Intelligence Cloud)"
+    )
+    parser.add_argument(
+        "--org-id",
+        help="Organization ID to associate with the detections (for multi-org setups)"
+    )
+    
+    # Organization ID is specified directly without listing functionality
+    
+    # Input options
+    parser.add_argument(
+        "--input-dir", 
+        type=Path, 
+        help="Directory containing input files (default: sample/)"
+    )
+    parser.add_argument(
+        "--pattern", 
+        help="Filename pattern to match (default: sample_*.csv for CSV files)"
+    )
+    
+    # Processing options
+    parser.add_argument(
+        "--concurrent", "-c",
+        type=int,
+        default=5,
+        help="Maximum number of concurrent requests (default: 5)"
+    )
+    parser.add_argument(
+        "--batch-size", "-b",
+        type=int,
+        default=100,
+        help="Maximum number of detections per batch (default: 100)"
+    )
+    parser.add_argument(
+        "--max-retries", "-r",
+        type=int,
+        default=3,
+        help="Maximum number of retry attempts for API calls (default: 3)"
+    )
+    parser.add_argument(
+        "--no-retry",
+        action="store_true",
+        help="Disable automatic retries on API errors"
+    )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable progress bars"
+    )
+    
+    # Export options
+    parser.add_argument(
+        "--export-metrics",
+        action="store_true",
+        help="Export performance metrics to a JSON file"
+    )
+    parser.add_argument(
+        "--metrics-file",
+        type=str,
+        help="Path to save performance metrics (default: auto-generated)"
+    )
+    parser.add_argument(
+        "--export-results",
+        action="store_true",
+        help="Export processing results to files"
+    )
+    parser.add_argument(
+        "--export-dir",
+        type=str,
+        help="Directory for exported results (default: current directory)"
+    )
+    parser.add_argument(
+        "--export-format",
+        choices=["json", "csv", "html", "all"],
+        default="all",
+        help="Export format for results (default: all)"
+    )
+    parser.add_argument(
+        "--analyze-errors",
+        action="store_true",
+        help="Analyze errors and provide suggestions"
+    )
+    
+    # Configuration file parameters
+    parser.add_argument(
+        "--config",
+        help="Path to configuration file (YAML or JSON)"
+    )
+    parser.add_argument(
+        "--profile",
+        default="default",
+        help="Configuration profile to use (for multi-environment setups)"
+    )
+    
+    # Logging options
     parser.add_argument(
         "--log-level",
         choices=["debug", "info", "warning", "error", "critical"],
@@ -59,126 +168,6 @@ def setup_argparse():
         "--log-file",
         help="Write logs to specified file"
     )
-    
-    # Configuration file parameters
-    parser.add_argument(
-        "--config",
-        help="Path to configuration file (YAML or JSON)"
-    )
-    parser.add_argument(
-        "--profile",
-        default="default",
-        help="Configuration profile to use (for multi-environment setups)"
-    )
-    
-    # Create subcommands
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
-    # Submit command (primary command for sending detections)
-    submit_parser = subparsers.add_parser(
-        "submit", 
-        help="Submit detections from CSV or JSON files to RF Intelligence Cloud"
-    )
-    submit_parser.add_argument(
-        "files", 
-        nargs="*", 
-        help="Files to process (CSV or JSON, defaults to all CSVs in sample/ if none specified)"
-    )
-    submit_parser.add_argument(
-        "--token", "-t",
-        help="API token (overrides RF_API_TOKEN env var)"
-    )
-    submit_parser.add_argument(
-        "--debug", "-d",
-        action="store_true",
-        help="Enable debug mode (data will not be saved to RF Intelligence Cloud)"
-    )
-    submit_parser.add_argument(
-        "--input-dir", 
-        type=Path, 
-        help="Directory containing input files (default: sample/)"
-    )
-    submit_parser.add_argument(
-        "--pattern", 
-        help="Filename pattern to match (default: sample_*.csv for CSV files)"
-    )
-    submit_parser.add_argument(
-        "--concurrent", "-c",
-        type=int,
-        default=5,
-        help="Maximum number of concurrent requests (default: 5)"
-    )
-    submit_parser.add_argument(
-        "--batch-size", "-b",
-        type=int,
-        default=100,
-        help="Maximum number of detections per batch (default: 100)"
-    )
-    submit_parser.add_argument(
-        "--max-retries", "-r",
-        type=int,
-        default=3,
-        help="Maximum number of retry attempts for API calls (default: 3)"
-    )
-    submit_parser.add_argument(
-        "--no-retry",
-        action="store_true",
-        help="Disable automatic retries on API errors"
-    )
-    submit_parser.add_argument(
-        "--no-progress",
-        action="store_true",
-        help="Disable progress bars"
-    )
-    submit_parser.add_argument(
-        "--export-metrics",
-        action="store_true",
-        help="Export performance metrics to a JSON file"
-    )
-    submit_parser.add_argument(
-        "--metrics-file",
-        type=str,
-        help="Path to save performance metrics (default: auto-generated)"
-    )
-    submit_parser.add_argument(
-        "--export-results",
-        action="store_true",
-        help="Export processing results to files"
-    )
-    submit_parser.add_argument(
-        "--export-dir",
-        type=str,
-        help="Directory for exported results (default: current directory)"
-    )
-    submit_parser.add_argument(
-        "--export-format",
-        choices=["json", "csv", "html", "all"],
-        default="all",
-        help="Export format for results (default: all)"
-    )
-    submit_parser.add_argument(
-        "--analyze-errors",
-        action="store_true",
-        help="Analyze errors and provide suggestions"
-    )
-    submit_parser.add_argument(
-        "--org-id",
-        help="Organization ID to associate with the detections (for multi-org setups)"
-    )
-    
-    # No legacy commands
-    
-    # Organizations command for multi-org setups
-    orgs_parser = subparsers.add_parser(
-        "organizations", 
-        help="List available organizations for multi-org enterprise setups"
-    )
-    orgs_parser.add_argument(
-        "--token", "-t",
-        help="API token (overrides RF_API_TOKEN env var)"
-    )
-    
-    # No visualization commands
     
     return parser
 
@@ -232,7 +221,8 @@ async def handle_submit_command(args) -> int:
             max_concurrent=max_concurrent,
             batch_size=batch_size,
             max_retries=max_retries,
-            show_progress=not args.no_progress
+            show_progress=not args.no_progress,
+            organization_id=org_id
         )
         
         # Expand glob patterns in file arguments if provided
@@ -438,40 +428,7 @@ async def handle_submit_command(args) -> int:
         return 1
 
 
-def handle_organizations_command(args) -> int:
-    """
-    Handle the organizations command: list available organizations for multi-org setups.
-    
-    Args:
-        args: Command-line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for failure)
-    """
-    try:
-        from sendDetections.config import get_config
-        
-        # Get API token
-        api_token = args.token or get_config("api_token") or os.getenv("RF_API_TOKEN")
-        if not api_token:
-            logger.error("API token is required. Use --token, set RF_API_TOKEN in .env, or configure in config file.")
-            return 1
-            
-        logger.info("Retrieving organization information...")
-        
-        # This is a placeholder - in a real implementation, we would call the Recorded Future API
-        # to retrieve the list of organizations the current API token has access to
-        print("\nAvailable Organizations")
-        print("======================")
-        print("Organization ID\tName")
-        print("uhash:T2j9L\tExample Organization")
-        print("\nNote: This is a placeholder. Organization list feature coming soon.")
-        
-        return 0
-        
-    except Exception as e:
-        logger.error("Error retrieving organizations: %s", str(e))
-        return 1
+# Organizations listing function removed
 
 
 def main() -> int:
@@ -512,24 +469,11 @@ def main() -> int:
             logger.info("Using configuration profile: %s", args.profile)
     
     # Log startup information
-    logger.info("sendDetections starting: command=%s", args.command or "none")
+    logger.info("sendDetections starting")
     
     try:
-        # Ensure a command is specified
-        if not args.command:
-            logger.error("No command specified. Use 'submit' to process detections.")
-            parser.print_help()
-            return 1
-        
-        # Dispatch to appropriate handler based on command
-        if args.command == "submit":
-            return asyncio.run(handle_submit_command(args))
-        elif args.command == "organizations":
-            return handle_organizations_command(args)
-        else:
-            logger.error("Unknown command: %s", args.command)
-            logger.error("Use 'submit' for processing detections or 'organizations' to list organizations.")
-            return 1
+        # Default behavior is to process files
+        return asyncio.run(handle_submit_command(args))
             
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")

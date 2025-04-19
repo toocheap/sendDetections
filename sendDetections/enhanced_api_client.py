@@ -355,3 +355,5 @@ class EnhancedApiClient:
                     raise
                     
         return results
+        
+    # Organizations API functionality removed
