@@ -255,3 +255,236 @@ async def test_error_handling_in_batch_processing():
             # After the error, metrics should still have recorded something
             assert processor.metrics.errors_by_type
             assert "JSONDecodeError" in processor.metrics.errors_by_type
+
+
+@pytest.mark.asyncio
+async def test_process_directory():
+    """Test processing all files in a directory."""
+    # Create test data
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdir = Path(tmpdirname)
+        
+        # Create three files: 2 JSON and 1 TXT
+        json_file1 = tmpdir / "test1.json"
+        json_file2 = tmpdir / "test2.json"
+        txt_file = tmpdir / "test.txt"  # Should be ignored by default pattern
+        
+        # Create sample JSON payloads
+        sample_payload = {
+            "data": [
+                {
+                    "ioc": {
+                        "type": "ip",
+                        "value": "1.2.3.4"
+                    },
+                    "detection": {
+                        "type": "playbook",
+                        "id": "test-id"
+                    }
+                }
+            ]
+        }
+        
+        with open(json_file1, "w") as f:
+            json.dump(sample_payload, f)
+            
+        with open(json_file2, "w") as f:
+            json.dump(sample_payload, f)
+            
+        with open(txt_file, "w") as f:
+            f.write("This is not JSON")
+        
+        # Mock the batch processor's process_files method
+        with patch.object(BatchProcessor, "process_files") as mock_process_files:
+            mock_result = {
+                "summary": {
+                    "submitted": 2,
+                    "processed": 2,
+                    "dropped": 0
+                }
+            }
+            mock_process_files.return_value = mock_result
+            
+            # Initialize processor
+            processor = BatchProcessor(api_token="test_token", show_progress=False)
+            
+            # Test with default pattern (*.json)
+            result = await processor.process_directory(tmpdir)
+            
+            # Verify process_files was called with the right files
+            mock_process_files.assert_called_once()
+            call_args = mock_process_files.call_args[0][0]  # First positional arg is file_paths
+            assert len(call_args) == 2
+            assert any(f.name == "test1.json" for f in call_args)
+            assert any(f.name == "test2.json" for f in call_args)
+            assert not any(f.name == "test.txt" for f in call_args)
+            
+            # Check results were passed through
+            assert result == mock_result
+
+
+@pytest.mark.asyncio
+async def test_process_directory_nonexistent():
+    """Test processing a nonexistent directory."""
+    processor = BatchProcessor(api_token="test_token")
+    
+    with pytest.raises(FileNotFoundError):
+        await processor.process_directory(Path("/nonexistent/directory"))
+
+
+@pytest.mark.asyncio
+async def test_process_directory_empty():
+    """Test processing an empty directory."""
+    # Create empty directory
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdir = Path(tmpdirname)
+        
+        # Initialize processor
+        processor = BatchProcessor(api_token="test_token", show_progress=False)
+        
+        # Process directory
+        result = await processor.process_directory(tmpdir)
+        
+        # Verify result has empty summary
+        assert "summary" in result
+        assert result["summary"]["submitted"] == 0
+        assert result["summary"]["processed"] == 0
+        assert result["summary"]["dropped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_process_large_payload():
+    """Test processing a large payload by splitting it."""
+    # Create a large payload
+    large_payload = {
+        "data": [
+            {
+                "ioc": {
+                    "type": "ip",
+                    "value": f"192.168.0.{i}"
+                },
+                "detection": {
+                    "type": "playbook",
+                    "id": f"test-id-{i}"
+                }
+            }
+            for i in range(1, 21)  # 20 items
+        ]
+    }
+    
+    # Expected result from split_and_send
+    expected_result = {
+        "summary": {
+            "submitted": 20,
+            "processed": 20,
+            "dropped": 0
+        }
+    }
+    
+    # Mock the client's split_and_send method
+    with patch("sendDetections.async_api_client.AsyncApiClient.split_and_send") as mock_split_and_send:
+        mock_split_and_send.return_value = expected_result
+        
+        # Initialize processor with a batch size of 5
+        processor = BatchProcessor(
+            api_token="test_token",
+            batch_size=5,
+            show_progress=False
+        )
+        
+        # Process large payload
+        result = await processor.process_large_payload(large_payload)
+        
+        # Verify split_and_send was called with the right arguments
+        mock_split_and_send.assert_called_once_with(
+            large_payload, 
+            batch_size=5,
+            debug=False
+        )
+        
+        # Check results
+        assert result == expected_result
+
+
+@pytest.mark.asyncio
+async def test_process_large_file():
+    """Test processing a large JSON file by splitting its payload."""
+    # Create test data
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdir = Path(tmpdirname)
+        
+        # Create a JSON file with a large payload
+        large_file = tmpdir / "large.json"
+        large_payload = {
+            "data": [
+                {
+                    "ioc": {
+                        "type": "ip",
+                        "value": f"192.168.0.{i}"
+                    },
+                    "detection": {
+                        "type": "playbook",
+                        "id": f"test-id-{i}"
+                    }
+                }
+                for i in range(1, 21)  # 20 items
+            ]
+        }
+        
+        with open(large_file, "w") as f:
+            json.dump(large_payload, f)
+        
+        # Expected result
+        expected_result = {
+            "summary": {
+                "submitted": 20,
+                "processed": 20,
+                "dropped": 0
+            }
+        }
+        
+        # Mock process_large_payload
+        with patch.object(BatchProcessor, "process_large_payload") as mock_process_large_payload:
+            mock_process_large_payload.return_value = expected_result
+            
+            # Initialize processor
+            processor = BatchProcessor(api_token="test_token", show_progress=False)
+            
+            # Process large file
+            result = await processor.process_large_file(large_file)
+            
+            # Verify process_large_payload was called with the right payload
+            mock_process_large_payload.assert_called_once()
+            assert len(mock_process_large_payload.call_args[0][0]["data"]) == 20
+            
+            # Check results
+            assert result == expected_result
+
+
+@pytest.mark.asyncio
+async def test_process_large_file_not_found():
+    """Test handling of nonexistent file in process_large_file."""
+    processor = BatchProcessor(api_token="test_token")
+    
+    with pytest.raises(FileNotFoundError):
+        await processor.process_large_file(Path("/nonexistent/file.json"))
+
+
+@pytest.mark.asyncio
+async def test_process_large_file_invalid_json():
+    """Test handling of invalid JSON in process_large_file."""
+    # Create test data
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdir = Path(tmpdirname)
+        
+        # Create a file with invalid JSON
+        invalid_file = tmpdir / "invalid.json"
+        with open(invalid_file, "w") as f:
+            f.write("{not valid json")
+        
+        # Initialize processor
+        processor = BatchProcessor(api_token="test_token", show_progress=False)
+        
+        # Process file
+        with pytest.raises(json.JSONDecodeError):
+            await processor.process_large_file(invalid_file)
