@@ -19,8 +19,8 @@ setup(
     description="CSV to Recorded Future Detection API submission utility",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Tomoyuki Matsuda",
+    author_email="tomoyuki.matsuda@recordedfuture.com",
     license="MIT",
     
     # Package configuration

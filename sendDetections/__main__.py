@@ -60,6 +60,17 @@ def setup_argparse():
         help="Write logs to specified file"
     )
     
+    # Configuration file parameters
+    parser.add_argument(
+        "--config",
+        help="Path to configuration file (YAML or JSON)"
+    )
+    parser.add_argument(
+        "--profile",
+        default="default",
+        help="Configuration profile to use (for multi-environment setups)"
+    )
+    
     # Create subcommands
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     
@@ -68,6 +79,7 @@ def setup_argparse():
         "convert", 
         help="Convert CSV files to JSON payload format"
     )
+    
     
     # Batch command
     batch_parser = subparsers.add_parser(
@@ -247,15 +259,20 @@ def handle_convert_command(args) -> int:
         Exit code (0 for success, 1 for failure)
     """
     try:
+        from sendDetections.config import get_config
+        
         # Setup converter with specified options
-        input_dir = args.input_dir or SAMPLE_DIR
+        input_dir = args.input_dir or get_config("sample_dir", SAMPLE_DIR)
+        csv_pattern = args.pattern or get_config("csv_pattern", "sample_*.csv")
+        csv_encoding = get_config("csv_encoding", "utf-8")
         
         logger.info("Converting CSV files from %s", input_dir)
         
         converter = CSVConverter(
             input_dir=input_dir,
             output_dir=args.output_dir,
-            csv_pattern=args.pattern or "sample_*.csv"
+            csv_pattern=csv_pattern,
+            encoding=csv_encoding
         )
         
         # Process specified files or run batch conversion
@@ -300,16 +317,22 @@ def handle_send_command(args) -> int:
         Exit code (0 for success, 1 for failure)
     """
     try:
+        from sendDetections.config import get_config, get_api_url
+        
         # Get API token
-        api_token = args.token or os.getenv("RF_API_TOKEN")
+        api_token = args.token or get_config("api_token") or os.getenv("RF_API_TOKEN")
         if not api_token:
-            logger.error("API token is required. Use --token or set RF_API_TOKEN in .env.")
+            logger.error("API token is required. Use --token, set RF_API_TOKEN in .env, or configure in config file.")
             return 1
+        
+        # Get configuration values with command-line priority
+        max_retries = args.max_retries or get_config("max_retries", 3)
         
         # Initialize API client
         client = EnhancedApiClient(
             api_token=api_token,
-            max_retries=args.max_retries if not args.no_retry else 0
+            api_url=get_api_url(),
+            max_retries=max_retries if not args.no_retry else 0
         )
         
         success_count = 0
@@ -400,18 +423,25 @@ async def handle_batch_command(args) -> int:
         Exit code (0 for success, 1 for failure)
     """
     try:
+        from sendDetections.config import get_config
+        
         # Get API token
-        api_token = args.token or os.getenv("RF_API_TOKEN")
+        api_token = args.token or get_config("api_token") or os.getenv("RF_API_TOKEN")
         if not api_token:
-            logger.error("API token is required. Use --token or set RF_API_TOKEN in .env.")
+            logger.error("API token is required. Use --token, set RF_API_TOKEN in .env, or configure in config file.")
             return 1
+        
+        # Get configuration values with command-line priority
+        max_concurrent = args.max_concurrent or get_config("max_concurrent", 5)
+        batch_size = args.batch_size or get_config("batch_size", 100)
+        max_retries = args.max_retries or get_config("max_retries", 3)
         
         # Initialize batch processor
         processor = BatchProcessor(
             api_token=api_token,
-            max_concurrent=args.max_concurrent,
-            batch_size=args.batch_size,
-            max_retries=args.max_retries,
+            max_concurrent=max_concurrent,
+            batch_size=batch_size,
+            max_retries=max_retries,
             show_progress=not args.no_progress
         )
         
@@ -610,6 +640,66 @@ async def handle_batch_command(args) -> int:
         return 1
 
 
+def handle_visualize_command(args) -> int:
+    """
+    Handle the visualize command: launch interactive dashboard for results visualization.
+    
+    Args:
+        args: Command-line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        # Try to import visualization dependencies - these are optional
+        try:
+            from sendDetections.visualize import start_dashboard, VIZ_AVAILABLE
+            if not VIZ_AVAILABLE:
+                logger.error(
+                    "Visualization dependencies not installed. "
+                    "Install with: pip install -e \".[viz]\""
+                )
+                return 1
+        except ImportError:
+            logger.error(
+                "Visualization module not available. "
+                "Install required dependencies with: pip install -e \".[viz]\""
+            )
+            return 1
+            
+        # Verify file exists
+        file_path = Path(args.file)
+        if not file_path.exists():
+            logger.error("Results file not found: %s", file_path)
+            return 1
+            
+        if not file_path.suffix.lower() == '.json':
+            logger.warning(
+                "Expected a JSON file but got %s. "
+                "The dashboard may not work correctly.",
+                file_path.suffix
+            )
+            
+        # Launch the dashboard
+        logger.info("Launching visualization dashboard for %s", file_path)
+        try:
+            # Start the dashboard (this will block until the server is stopped)
+            start_dashboard(
+                file_path=file_path,
+                port=args.port,
+                open_browser=not args.no_browser,
+                debug=args.debug
+            )
+            return 0
+        except KeyboardInterrupt:
+            logger.info("Dashboard server stopped by user")
+            return 0
+            
+    except Exception as e:
+        logger.error("Failed to start visualization dashboard: %s", str(e), exc_info=True)
+        return 1
+
+
 def handle_convert_send_command(args) -> int:
     """
     Handle the convert-send command: convert CSV files and send them to the API.
@@ -621,26 +711,33 @@ def handle_convert_send_command(args) -> int:
         Exit code (0 for success, 1 for failure)
     """
     try:
+        from sendDetections.config import get_config, get_api_url
+        
         # Get API token
-        api_token = args.token or os.getenv("RF_API_TOKEN")
+        api_token = args.token or get_config("api_token") or os.getenv("RF_API_TOKEN")
         if not api_token:
-            logger.error("API token is required. Use --token or set RF_API_TOKEN in .env.")
+            logger.error("API token is required. Use --token, set RF_API_TOKEN in .env, or configure in config file.")
             return 1
         
+        # Get configuration values with command-line priority
+        max_retries = args.max_retries or get_config("max_retries", 3)
+        
         # Setup converter
-        input_dir = args.input_dir or SAMPLE_DIR
+        input_dir = args.input_dir or get_config("sample_dir", SAMPLE_DIR)
+        csv_pattern = args.pattern or get_config("csv_pattern", "sample_*.csv")
         
         logger.info("Converting and sending CSV files from %s", input_dir)
         
         converter = CSVConverter(
             input_dir=input_dir,
-            csv_pattern=args.pattern or "sample_*.csv"
+            csv_pattern=csv_pattern
         )
         
         # Initialize API client
         client = EnhancedApiClient(
             api_token=api_token,
-            max_retries=args.max_retries if not args.no_retry else 0
+            api_url=get_api_url(),
+            max_retries=max_retries if not args.no_retry else 0
         )
         
         # Convert files
@@ -756,6 +853,26 @@ def main() -> int:
         log_file=args.log_file
     )
     
+    # Initialize configuration manager with provided file and profile
+    from sendDetections.config import ConfigManager, config_manager
+    
+    if args.config or args.profile != "default":
+        # Create a new config manager with the specified options
+        new_config_manager = ConfigManager(
+            config_file=args.config,
+            profile=args.profile
+        )
+        
+        # Replace the default config manager
+        # This is a bit hacky but allows us to keep the module-level imports working
+        import sendDetections.config
+        sendDetections.config.config_manager = new_config_manager
+        
+        if args.config:
+            logger.info("Using configuration file: %s (profile: %s)", args.config, args.profile)
+        else:
+            logger.info("Using configuration profile: %s", args.profile)
+    
     # Log startup information
     logger.info("sendDetections starting: command=%s", args.command or "none")
     
@@ -775,6 +892,8 @@ def main() -> int:
             return handle_convert_send_command(args)
         elif args.command == "batch":
             return asyncio.run(handle_batch_command(args))
+        elif args.command == "visualize":
+            return handle_visualize_command(args)
         else:
             logger.error("Unknown command: %s", args.command)
             return 1

@@ -1,0 +1,42 @@
+{
+  "api_url": "https://api.recordedfuture.com/collective-insights/detections",
+  
+  "api_options_debug": false,
+  "api_options_summary": true,
+  
+  "max_concurrent": 5,
+  "batch_size": 100,
+  "max_retries": 3,
+  
+  "sample_dir": "sample",
+  "csv_pattern": "sample_*.csv",
+  "csv_encoding": "utf-8",
+  
+  "_comment": "Multi-profile configuration example (remove '_comment' and uncomment 'profiles' to use)",
+  "_profiles": {
+    "default": {
+      "api_url": "https://api.recordedfuture.com/collective-insights/detections",
+      "api_options_debug": false,
+      "api_options_summary": true,
+      "max_concurrent": 5,
+      "batch_size": 100,
+      "max_retries": 3
+    },
+    "dev": {
+      "api_url": "https://dev-api.recordedfuture.com/collective-insights/detections",
+      "api_options_debug": true,
+      "api_options_summary": true,
+      "max_concurrent": 2,
+      "batch_size": 10,
+      "max_retries": 1
+    },
+    "prod": {
+      "api_url": "https://api.recordedfuture.com/collective-insights/detections",
+      "api_options_debug": false,
+      "api_options_summary": true,
+      "max_concurrent": 10,
+      "batch_size": 200,
+      "max_retries": 5
+    }
+  }
+}

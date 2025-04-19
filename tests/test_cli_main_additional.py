@@ -100,9 +100,11 @@ class TestHandleSendCommandExtended:
     @patch('pathlib.Path.exists')
     @patch('pathlib.Path.open')
     @patch('json.load')
-    def test_handle_send_command_env_token(self, mock_json_load, mock_path_open, mock_path_exists, mock_client_class):
+    @patch('sendDetections.config.get_api_url')
+    def test_handle_send_command_env_token(self, mock_get_api_url, mock_json_load, mock_path_open, mock_path_exists, mock_client_class):
         """Test handle_send_command using token from environment variable."""
         # Setup mocks
+        mock_get_api_url.return_value = "https://api.example.com/test"
         mock_client = MagicMock()
         mock_client.send_data.return_value = {
             "summary": {"submitted": 1, "processed": 1, "dropped": 0}
@@ -127,6 +129,7 @@ class TestHandleSendCommandExtended:
         assert result == 0
         mock_client_class.assert_called_with(
             api_token="env_token",
+            api_url="https://api.example.com/test",
             max_retries=3
         )
         mock_client.send_data.assert_called_once()
@@ -280,9 +283,11 @@ class TestHandleConvertSendCommand:
     
     @patch('sendDetections.__main__.CSVConverter')
     @patch('sendDetections.__main__.EnhancedApiClient')
-    def test_handle_convert_send_success(self, mock_client_class, mock_converter_class):
+    @patch('sendDetections.config.get_api_url')
+    def test_handle_convert_send_success(self, mock_get_api_url, mock_client_class, mock_converter_class):
         """Test handle_convert_send_command with successful conversion and send."""
         # Setup mocks
+        mock_get_api_url.return_value = "https://api.example.com/test"
         mock_converter = MagicMock()
         converted_file = Path("converted.json")
         mock_converter.run.return_value = [converted_file]
@@ -319,9 +324,11 @@ class TestHandleConvertSendCommand:
     
     @patch('sendDetections.__main__.CSVConverter')
     @patch('sendDetections.__main__.EnhancedApiClient')
-    def test_handle_convert_send_no_converted_files(self, mock_client_class, mock_converter_class):
+    @patch('sendDetections.config.get_api_url')
+    def test_handle_convert_send_no_converted_files(self, mock_get_api_url, mock_client_class, mock_converter_class):
         """Test handle_convert_send_command with no files converted."""
         # Setup mocks
+        mock_get_api_url.return_value = "https://api.example.com/test"
         mock_converter = MagicMock()
         mock_converter.run.return_value = []  # No files converted
         mock_converter_class.return_value = mock_converter
@@ -353,9 +360,11 @@ class TestHandleConvertSendCommand:
     
     @patch('sendDetections.__main__.CSVConverter')
     @patch('sendDetections.__main__.EnhancedApiClient')
-    def test_handle_convert_send_with_specific_files(self, mock_client_class, mock_converter_class):
+    @patch('sendDetections.config.get_api_url')
+    def test_handle_convert_send_with_specific_files(self, mock_get_api_url, mock_client_class, mock_converter_class):
         """Test handle_convert_send_command with specific files."""
         # Setup mocks
+        mock_get_api_url.return_value = "https://api.example.com/test"
         mock_converter = MagicMock()
         mock_converter.convert_file.return_value = Path("converted.json")
         mock_converter_class.return_value = mock_converter
@@ -414,9 +423,11 @@ class TestHandleConvertSendCommand:
     
     @patch('sendDetections.__main__.CSVConverter')
     @patch('sendDetections.__main__.EnhancedApiClient')
-    def test_handle_convert_send_api_error(self, mock_client_class, mock_converter_class):
+    @patch('sendDetections.config.get_api_url')
+    def test_handle_convert_send_api_error(self, mock_get_api_url, mock_client_class, mock_converter_class):
         """Test handle_convert_send_command with API error."""
         # Setup mocks
+        mock_get_api_url.return_value = "https://api.example.com/test"
         mock_converter = MagicMock()
         converted_file = Path("converted.json")
         mock_converter.run.return_value = [converted_file]

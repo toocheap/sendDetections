@@ -31,6 +31,23 @@ dev = [
     "black>=23.0.0"
 ]
 
+yaml = [
+    "pyyaml>=6.0.0"
+]
+
+viz = [
+    "plotly>=5.8.0",
+    "dash>=2.5.0",
+    "pandas>=1.4.0"
+]
+
+full = [
+    "pyyaml>=6.0.0",
+    "plotly>=5.8.0",
+    "dash>=2.5.0",
+    "pandas>=1.4.0"
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
