@@ -38,9 +38,6 @@ sendDetections/
   
   # For YAML configuration support only:
   pip install -e ".[yaml]"
-  
-  # For visualization support only:
-  pip install -e ".[viz]"
   ```
 - Place your sample CSV files in the `sample/` directory
 - Set your API token via:
@@ -76,12 +73,12 @@ python3 sendDetections.py submit sample/*.csv --concurrent 10 --batch-size 200 -
 - Process files concurrently with custom parameters
 - Export results for analysis
 
-### 3. Visualize results with interactive dashboard
+### 3. List available organizations (for multi-org setups)
 ```sh
-python3 sendDetections.py visualize results_20230622_112233.json
+python3 sendDetections.py organizations
 ```
-- Requires visualization dependencies: `pip install -e ".[viz]"`
-- Opens an interactive web dashboard on http://127.0.0.1:8050/
+- Lists organizations accessible with your API token
+- Useful for multi-organization enterprise setups
 
 ---
 
@@ -97,7 +94,6 @@ pytest tests/
 ### Main Commands
 - `submit [files]`          Submit detections (from CSV or JSON files) to RF Intelligence Cloud
 - `organizations`           List available organizations (for multi-org setups)
-- `visualize <file>`        Launch interactive dashboard for visualizing results
 
 ### Common Options
 - `--token, -t <TOKEN>`     Specify API token (overrides environment/.env/config file)
@@ -198,39 +194,28 @@ Settings are applied in the following order (highest to lowest priority):
 3. Configuration file settings
 4. Default values
 
-## Data Visualization
+## Data Export
 
-sendDetections includes an interactive dashboard for visualizing results and IoC data:
+sendDetections can export processing results in various formats:
 
-- Requires optional dependencies: `pip install -e ".[viz]"`
-- Launch the dashboard with: `python3 sendDetections.py visualize results.json`
-- Features:
-  - Summary statistics and metrics
-  - Interactive charts and visualizations
-  - IoC type distribution analysis
-  - Detection method breakdown
-  - Timeline and trend analysis
-  - Error analysis and breakdown
+- JSON: Complete results with detailed information
+- CSV: Summary tables for easier analysis
+- HTML: Formatted reports with tables and statistics
 
-The dashboard opens in your web browser and provides:
-- Processing overview with success rates and metrics
-- IoC analysis with type distribution and source breakdown
-- Detailed tables of processed data and errors
+Use export options to save results for further analysis:
 
-Example:
 ```sh
-# Run batch processing with results export
-python3 sendDetections.py batch samples/*.json --export-results --export-dir ./results
+# Run processing with result export
+python3 sendDetections.py submit sample/*.json --export-results --export-dir ./results
 
-# Visualize the results
-python3 sendDetections.py visualize ./results/results_20230501_120000.json
+# Analyze errors automatically
+python3 sendDetections.py submit sample/*.csv --analyze-errors
 ```
 
 ## Notes
 - The script expects the CSV columns to match the provided sample structure.
 - For details on the payload format, see the code or example JSON files.
 - YAML configuration requires the PyYAML package (`pip install pyyaml` or `pip install -e ".[yaml]"`)
-- Visualization requires additional packages (`pip install -e ".[viz]"`)
 
 ## About the `scripts/` Directory
 The `scripts/` directory contains legacy or experimental scripts. These are not required for normal usage, but may be useful for reference or ad-hoc tasks. The main logic for CSV conversion and API submission is in the `sendDetections/` package.
@@ -255,8 +240,4 @@ python3 sendDetections.py submit sample/*.json --config my-config.yml --profile 
 
 # Other commands
 python3 sendDetections.py organizations  # List available organizations
-python3 sendDetections.py visualize results_20230622_112233.json  # View analysis dashboard
-
-# With visualization
-python3 sendDetections.py visualize export_20230622_112233.json
 ```

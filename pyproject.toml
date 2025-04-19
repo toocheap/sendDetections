@@ -35,17 +35,8 @@ yaml = [
     "pyyaml>=6.0.0"
 ]
 
-viz = [
-    "plotly>=5.8.0",
-    "dash>=2.5.0",
-    "pandas>=1.4.0"
-]
-
 full = [
-    "pyyaml>=6.0.0",
-    "plotly>=5.8.0",
-    "dash>=2.5.0",
-    "pandas>=1.4.0"
+    "pyyaml>=6.0.0"
 ]
 
 [tool.pytest.ini_options]

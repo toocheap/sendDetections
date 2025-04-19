@@ -178,31 +178,7 @@ def setup_argparse():
         help="API token (overrides RF_API_TOKEN env var)"
     )
     
-    # Visualization command for result analysis
-    visualize_parser = subparsers.add_parser(
-        "visualize",
-        help="Launch interactive dashboard for visualizing results"
-    )
-    visualize_parser.add_argument(
-        "file",
-        help="JSON results file to visualize"
-    )
-    visualize_parser.add_argument(
-        "--port",
-        type=int,
-        default=8050,
-        help="Port to run the dashboard server on (default: 8050)"
-    )
-    visualize_parser.add_argument(
-        "--no-browser",
-        action="store_true",
-        help="Don't open browser automatically"
-    )
-    visualize_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Run dashboard in debug mode"
-    )
+    # No visualization commands
     
     return parser
 
@@ -216,64 +192,7 @@ def setup_argparse():
 # Legacy command handler removed
 
 
-def handle_visualize_command(args) -> int:
-    """
-    Handle the visualize command: launch interactive dashboard for results visualization.
-    
-    Args:
-        args: Command-line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for failure)
-    """
-    try:
-        # Try to import visualization dependencies - these are optional
-        try:
-            from sendDetections.visualize import start_dashboard, VIZ_AVAILABLE
-            if not VIZ_AVAILABLE:
-                logger.error(
-                    "Visualization dependencies not installed. "
-                    "Install with: pip install -e \".[viz]\""
-                )
-                return 1
-        except ImportError:
-            logger.error(
-                "Visualization module not available. "
-                "Install required dependencies with: pip install -e \".[viz]\""
-            )
-            return 1
-            
-        # Verify file exists
-        file_path = Path(args.file)
-        if not file_path.exists():
-            logger.error("Results file not found: %s", file_path)
-            return 1
-            
-        if not file_path.suffix.lower() == '.json':
-            logger.warning(
-                "Expected a JSON file but got %s. "
-                "The dashboard may not work correctly.",
-                file_path.suffix
-            )
-            
-        # Launch the dashboard
-        logger.info("Launching visualization dashboard for %s", file_path)
-        try:
-            # Start the dashboard (this will block until the server is stopped)
-            start_dashboard(
-                file_path=file_path,
-                port=args.port,
-                open_browser=not args.no_browser,
-                debug=args.debug
-            )
-            return 0
-        except KeyboardInterrupt:
-            logger.info("Dashboard server stopped by user")
-            return 0
-            
-    except Exception as e:
-        logger.error("Failed to start visualization dashboard: %s", str(e), exc_info=True)
-        return 1
+# Visualization command handler removed
 
 
 # Legacy command handler removed
@@ -605,13 +524,11 @@ def main() -> int:
         # Dispatch to appropriate handler based on command
         if args.command == "submit":
             return asyncio.run(handle_submit_command(args))
-        elif args.command == "visualize":
-            return handle_visualize_command(args)
         elif args.command == "organizations":
             return handle_organizations_command(args)
         else:
             logger.error("Unknown command: %s", args.command)
-            logger.error("Use 'submit' for processing detections or 'visualize' for viewing results.")
+            logger.error("Use 'submit' for processing detections or 'organizations' to list organizations.")
             return 1
             
     except KeyboardInterrupt:
