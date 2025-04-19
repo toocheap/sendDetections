@@ -107,6 +107,8 @@ def validate_payload(payload: Mapping[str, Any]) -> Optional[str]:
         # Format validation errors nicely
         errors = e.errors()
         if not errors:
+            # This case is extremely rare and mainly for defensive programming
+            # Occurs if ValidationError is raised but no errors were collected
             return "Unknown validation error"
             
         # Get the first error for simplicity

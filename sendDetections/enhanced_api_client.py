@@ -41,7 +41,8 @@ class EnhancedApiClient:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         timeout: float = 30.0,
-        retry_status_codes: Optional[list[int]] = None
+        retry_status_codes: Optional[list[int]] = None,
+        silent: bool = False
     ):
         """
         Initialize the enhanced API client.
@@ -53,6 +54,7 @@ class EnhancedApiClient:
             retry_delay: Base delay between retries in seconds (uses exponential backoff)
             timeout: Request timeout in seconds
             retry_status_codes: HTTP status codes to retry (defaults to [429, 500, 502, 503, 504])
+            silent: Whether to suppress log messages
         """
         self.api_token = api_token
         self.api_url = api_url or API_URL
@@ -60,11 +62,13 @@ class EnhancedApiClient:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.timeout = timeout
+        self.silent = silent
         
         # Default to common retryable status codes if none specified
         self.retry_status_codes = retry_status_codes or [429, 500, 502, 503, 504]
         
-        logger.debug("EnhancedApiClient initialized with URL: %s", self.api_url)
+        if not self.silent:
+            logger.debug("EnhancedApiClient initialized with URL: %s", self.api_url)
     
     @staticmethod
     def validate_payload(payload: Mapping[str, Any]) -> Optional[str]:
@@ -190,8 +194,9 @@ class EnhancedApiClient:
         
         # For readable logging, show count of IOCs
         ioc_count = len(payload.get("data", []))
-        logger.info("Sending %d detection(s) to %s (debug=%s)", 
-                   ioc_count, self.api_url, payload.get("options", {}).get("debug", False))
+        if not self.silent:
+            logger.info("Sending %d detection(s) to %s (debug=%s)", 
+                       ioc_count, self.api_url, payload.get("options", {}).get("debug", False))
         
         # Initialize retry counter and track attempts
         attempts = 0
@@ -200,7 +205,7 @@ class EnhancedApiClient:
         while attempts <= self.max_retries:
             try:
                 # Only log retry attempts after the first attempt
-                if attempts > 0:
+                if attempts > 0 and not self.silent:
                     logger.info("Retry attempt %d of %d", attempts, self.max_retries)
                 
                 response = requests.post(
@@ -217,18 +222,20 @@ class EnhancedApiClient:
                     result = response.json()
                     
                     # Log success with summary if available
-                    if "summary" in result:
-                        summary = result["summary"]
-                        logger.info("API call successful: %d submitted, %d processed, %d dropped",
-                                   summary.get("submitted", 0), 
-                                   summary.get("processed", 0),
-                                   summary.get("dropped", 0))
-                    else:
-                        logger.info("API call successful")
+                    if not self.silent:
+                        if "summary" in result:
+                            summary = result["summary"]
+                            logger.info("API call successful: %d submitted, %d processed, %d dropped",
+                                      summary.get("submitted", 0), 
+                                      summary.get("processed", 0),
+                                      summary.get("dropped", 0))
+                        else:
+                            logger.info("API call successful")
                         
                     return cast(dict[str, Any], result)
                 except ValueError as e:
-                    logger.warning("Could not parse API response as JSON: %s", str(e))
+                    if not self.silent:
+                        logger.warning("Could not parse API response as JSON: %s", str(e))
                     # Return empty dict if we can't parse the response
                     return {}
                     
@@ -301,3 +308,50 @@ class EnhancedApiClient:
             raise ApiConnectionError(f"Connection failed after {self.max_retries} retries: {str(last_error)}")
         else:
             raise ApiError(f"Failed after {self.max_retries} retries: {str(last_error) if last_error else 'Unknown error'}")
+    
+    def batch_send(
+        self, 
+        payloads: Sequence[Mapping[str, Any]], 
+        debug: bool = False,
+        continue_on_error: bool = False
+    ) -> list[dict[str, Any]]:
+        """
+        Send multiple payloads to the API in sequence.
+        
+        Args:
+            payloads: List of payload dictionaries to send
+            debug: Whether to enable debug mode for all payloads
+            continue_on_error: Whether to continue sending on error
+            
+        Returns:
+            List of API responses or error dictionaries
+            
+        Raises:
+            Various API errors if continue_on_error is False
+        """
+        results = []
+        
+        for i, payload in enumerate(payloads):
+            try:
+                if not self.silent:
+                    logger.info("Processing batch payload %d of %d", i + 1, len(payloads))
+                
+                response = self.send_data(payload, debug=debug)
+                results.append(response)
+                
+            except ApiError as e:
+                if not self.silent:
+                    logger.error("Error processing payload %d: %s", i + 1, str(e))
+                
+                if continue_on_error:
+                    # Add error information to results
+                    results.append({
+                        "error": str(e),
+                        "status_code": getattr(e, "status_code", None),
+                        "payload_index": i
+                    })
+                else:
+                    # Re-raise the exception
+                    raise
+                    
+        return results
