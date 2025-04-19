@@ -59,7 +59,8 @@ def test_cli_send_debug(temp_sample_csv, monkeypatch):
     ], capture_output=True, text=True, env={**os.environ, 'MOCK_REQUESTS': '1'})
     
     assert send_result.returncode == 0, f"Send command failed: {send_result.stderr}"
-    # Simply check that the API call was successful
-    assert "success" in send_result.stderr.lower()
+    # Check that the API call was successful - output now goes to stdout
+    output = send_result.stdout.lower() + send_result.stderr.lower()
+    assert "success" in output or "successfully sent" in output
     
     del os.environ["RF_API_TOKEN"]

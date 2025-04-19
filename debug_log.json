@@ -1,0 +1,5 @@
+{"level": "DEBUG", "message": "Logging configured: level=DEBUG, json=True, file=/Users/too/src/sendDetections/debug_log.json", "logger": "root", "module": "logging_config", "function": "configure_logging", "line": 215, "timestamp": "2025-04-19T11:36:22.927224"}
+{"level": "DEBUG", "message": "This is a debug message", "logger": "test_logger", "module": "debug_logging", "function": "<module>", "line": 24, "timestamp": "2025-04-19T11:36:22.927301"}
+{"level": "INFO", "message": "This is an info message", "logger": "test_logger", "module": "debug_logging", "function": "<module>", "line": 25, "timestamp": "2025-04-19T11:36:22.927329"}
+{"level": "WARNING", "message": "This is a warning message", "logger": "test_logger", "module": "debug_logging", "function": "<module>", "line": 26, "timestamp": "2025-04-19T11:36:22.927353"}
+{"level": "ERROR", "message": "This is an error message", "logger": "test_logger", "module": "debug_logging", "function": "<module>", "line": 27, "timestamp": "2025-04-19T11:36:22.927378"}

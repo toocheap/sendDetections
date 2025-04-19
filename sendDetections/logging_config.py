@@ -11,7 +11,9 @@ import json
 import logging
 import os
 import sys
+import traceback
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Union, List, cast
 
 # Determine if we're in a production environment
@@ -186,11 +188,24 @@ def configure_logging(
     
     # Add file handler if specified
     if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(level)
-        # Always use JSON for file logging for better analysis
-        file_handler.setFormatter(JSONFormatter())
-        root_logger.addHandler(file_handler)
+        try:
+            # Make sure the directory exists
+            log_path = Path(log_file).absolute()
+            log_dir = log_path.parent
+            if not log_dir.exists():
+                log_dir.mkdir(parents=True, exist_ok=True)
+                
+            # Create the file handler
+            file_handler = logging.FileHandler(str(log_path))
+            file_handler.setLevel(level)
+            # Always use JSON for file logging for better analysis
+            file_handler.setFormatter(JSONFormatter())
+            root_logger.addHandler(file_handler)
+            
+            print(f"Logging to file: {log_path}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error setting up log file {log_file}: {str(e)}", file=sys.stderr)
+            traceback.print_exc()
         
     # Set specific levels for third-party libraries to reduce noise
     logging.getLogger("urllib3").setLevel(logging.WARNING)
