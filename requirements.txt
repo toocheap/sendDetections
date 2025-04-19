@@ -7,6 +7,7 @@ aiohttp>=3.8.0
 # Development dependencies (prefer installing via pip install -e ".[dev]")
 pytest>=7.0.0
 pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
 hypothesis>=6.80.0
 pylint>=2.15.0
 mypy>=1.0.0
