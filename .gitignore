@@ -51,6 +51,7 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
+coverage_report/
 *.cover
 .hypothesis/
 

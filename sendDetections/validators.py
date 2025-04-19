@@ -12,6 +12,16 @@ class IoC(BaseModel):
     value: str = Field(..., description="Value of the IoC")
     source_type: Optional[str] = Field(None, description="Log source where the detection was made")
     field: Optional[str] = Field(None, description="Log/event field containing the indicator")
+    
+    @model_validator(mode='after')
+    def validate_ioc_type(self) -> 'IoC':
+        """Validate IoC type is one of the allowed values."""
+        allowed_types = ["ip", "domain", "hash", "vulnerability", "url"]
+        if self.type not in allowed_types:
+            raise ValueError(f"IoC type must be one of: {', '.join(allowed_types)}")
+        if not self.value:
+            raise ValueError("IoC value cannot be empty")
+        return self
 
 
 class Incident(BaseModel):
@@ -31,6 +41,11 @@ class Detection(BaseModel):
     @model_validator(mode='after')
     def validate_detection_rule(self) -> 'Detection':
         """Validate that detection_rule type has a sub_type."""
+        allowed_types = ["correlation", "playbook", "detection_rule", "sandbox"]
+        if self.type not in allowed_types and not self.type.startswith("detector_"):
+            raise ValueError(f"Detection type must be one of: {', '.join(allowed_types)} " 
+                             f"or start with 'detector_'")
+                             
         if self.type == "detection_rule" and not self.sub_type:
             raise ValueError("'sub_type' is required when type is 'detection_rule'")
         return self
@@ -44,6 +59,16 @@ class DataEntry(BaseModel):
     incident: Optional[Incident] = None
     mitre_codes: Optional[List[str]] = None
     malwares: Optional[List[str]] = None
+    
+    @model_validator(mode='after')
+    def validate_timestamp(self) -> 'DataEntry':
+        """Validate timestamp is in ISO 8601 format."""
+        if self.timestamp:
+            # Very basic ISO8601 validation
+            if not (self.timestamp.endswith('Z') and 'T' in self.timestamp and 
+                    self.timestamp.replace('T', ':').replace('Z', ':').replace('-', ':').count(':') >= 5):
+                raise ValueError("Timestamp must be in ISO 8601 format (YYYY-MM-DDThh:mm:ssZ)")
+        return self
 
 
 class ApiOptions(BaseModel):

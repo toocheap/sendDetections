@@ -227,12 +227,14 @@ class CSVConverter:
             entry['detection']['id'] = detection_id
         
         # Optional malware list
-        malwares = [m.strip() for m in row.get('Malware', '').split(',') if m.strip()]
+        malware_str = row.get('Malware') or ''
+        malwares = [m.strip() for m in malware_str.split(',') if m.strip()]
         if malwares:
             entry['malwares'] = malwares
             
         # Optional MITRE codes
-        codes = [c.strip() for c in row.get('Mitre Codes', '').split(',') if c.strip()]
+        mitre_str = row.get('Mitre Codes') or ''
+        codes = [c.strip() for c in mitre_str.split(',') if c.strip()]
         if codes:
             entry['mitre_codes'] = codes
             
