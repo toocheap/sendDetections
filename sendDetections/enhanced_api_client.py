@@ -4,11 +4,15 @@
 """
 Enhanced API client for Recorded Future Collective Insights Detection API.
 Adds retry logic, improved error handling, and structured logging.
+Uses Python 3.10+ type annotations.
 """
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Union, cast
+# Use standard library typing (Python 3.10+)
+from typing import Any, Optional, cast
+# Collections
+from collections.abc import Sequence, Mapping
 
 import requests
 from pydantic import ValidationError
@@ -37,7 +41,7 @@ class EnhancedApiClient:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         timeout: float = 30.0,
-        retry_status_codes: Optional[List[int]] = None
+        retry_status_codes: Optional[list[int]] = None
     ):
         """
         Initialize the enhanced API client.
@@ -63,13 +67,13 @@ class EnhancedApiClient:
         logger.debug("EnhancedApiClient initialized with URL: %s", self.api_url)
     
     @staticmethod
-    def validate_payload(payload: Dict[str, Any]) -> Optional[str]:
+    def validate_payload(payload: Mapping[str, Any]) -> Optional[str]:
         """
         Validate a payload dict. Returns an error message if invalid, else None.
         """
         return validate_payload(payload)
 
-    def add_default_options(self, payload: Dict[str, Any], debug: bool = False) -> Dict[str, Any]:
+    def add_default_options(self, payload: Mapping[str, Any], debug: bool = False) -> dict[str, Any]:
         """
         Add default options to payload if not present.
         
@@ -152,10 +156,10 @@ class EnhancedApiClient:
     
     def send_data(
         self, 
-        payload: Dict[str, Any], 
+        payload: Mapping[str, Any], 
         debug: bool = False, 
         retry: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Send data to the API with automatic retries for certain errors.
         
@@ -222,7 +226,7 @@ class EnhancedApiClient:
                     else:
                         logger.info("API call successful")
                         
-                    return cast(Dict[str, Any], result)
+                    return cast(dict[str, Any], result)
                 except ValueError as e:
                     logger.warning("Could not parse API response as JSON: %s", str(e))
                     # Return empty dict if we can't parse the response

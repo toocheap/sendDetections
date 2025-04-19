@@ -5,6 +5,7 @@
 Logging configuration for the sendDetections package.
 Provides structured logging setup with JSON formatting for machine readability
 and console formatting for human readability.
+Uses Python 3.10+ type annotations.
 """
 
 import json
@@ -14,7 +15,10 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, List, cast
+# Use standard library typing (Python 3.10+)
+from typing import Any, Optional, cast
+# Collections
+from collections.abc import Mapping, Sequence
 
 # Determine if we're in a production environment
 IS_PRODUCTION = os.environ.get("ENVIRONMENT", "").lower() == "production"
@@ -58,7 +62,7 @@ class JSONFormatter(logging.Formatter):
         Returns:
             JSON-formatted log string
         """
-        log_data: Dict[str, Any] = {
+        log_data: dict[str, Any] = {
             "level": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,
@@ -149,7 +153,7 @@ class ConsoleFormatter(logging.Formatter):
 
 
 def configure_logging(
-    level: Union[int, str] = DEFAULT_LOG_LEVEL,
+    level: int | str = DEFAULT_LOG_LEVEL,
     json_output: bool = False,
     log_file: Optional[str] = None
 ) -> None:

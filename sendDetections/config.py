@@ -6,7 +6,7 @@ Configuration can be set via environment variables or loaded from a .env file.
 
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -26,7 +26,7 @@ CSV_PATTERN = "sample_*.csv"
 CSV_ENCODING = "utf-8"
 
 # API options defaults
-DEFAULT_API_OPTIONS: Dict[str, Any] = {
+DEFAULT_API_OPTIONS: dict[str, Any] = {
     "debug": False,
     "summary": True
 }

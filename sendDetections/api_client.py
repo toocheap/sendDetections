@@ -3,10 +3,13 @@
 
 """
 API client for Recorded Future Collective Insights Detection API.
+
+Uses Python 3.10+ type annotations.
 """
 
 import logging
-from typing import Any, Dict, Optional, Union, cast
+from collections.abc import Mapping
+from typing import Any, Optional, cast
 
 import requests
 from pydantic import ValidationError
@@ -43,13 +46,13 @@ class DetectionApiClient:
         self.headers = {**DEFAULT_HEADERS, "X-RFToken": api_token}
     
     @staticmethod
-    def validate_payload(payload: Dict[str, Any]) -> Optional[str]:
+    def validate_payload(payload: Mapping[str, Any]) -> Optional[str]:
         """
         Validate a payload dict. Returns an error message if invalid, else None.
         """
         return validate_payload(payload)
 
-    def add_default_options(self, payload: Dict[str, Any], debug: bool = False) -> Dict[str, Any]:
+    def add_default_options(self, payload: Mapping[str, Any], debug: bool = False) -> dict[str, Any]:
         """
         Add default options to payload if not present.
         
@@ -75,7 +78,7 @@ class DetectionApiClient:
             
         return result
 
-    def send_data(self, payload: Dict[str, Any], debug: bool = False) -> Dict[str, Any]:
+    def send_data(self, payload: Mapping[str, Any], debug: bool = False) -> dict[str, Any]:
         """
         Send data to the API.
         
@@ -106,7 +109,7 @@ class DetectionApiClient:
                 timeout=30
             )
             response.raise_for_status()
-            return cast(Dict[str, Any], response.json())
+            return cast(dict[str, Any], response.json())
             
         except requests.exceptions.HTTPError as e:
             status_code = e.response.status_code

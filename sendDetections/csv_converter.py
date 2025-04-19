@@ -4,13 +4,16 @@
 """
 CSVConverter:
 Convert CSV files into JSON payloads for the Detection API.
+
+Uses Python 3.10+ type annotations.
 """
 
 import csv
 import json
 import logging
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Iterator
+from typing import Any, Optional
 
 from sendDetections.config import SAMPLE_DIR, CSV_PATTERN, CSV_ENCODING
 from sendDetections.validators import validate_payload
@@ -48,16 +51,16 @@ class CSVConverter:
         self.csv_pattern = csv_pattern
         self.encoding = encoding
     
-    def find_csv_files(self) -> List[Path]:
+    def find_csv_files(self) -> list[Path]:
         """
         Find CSV files matching the pattern in the input directory.
         
         Returns:
-            List of Path objects for matching CSV files
+            list of Path objects for matching CSV files
         """
         return sorted(self.input_dir.glob(self.csv_pattern))
     
-    def csv_to_payload(self, csv_path: Path) -> Dict[str, Any]:
+    def csv_to_payload(self, csv_path: Path) -> dict[str, Any]:
         """
         Read a CSV file and build a payload dict.
         
@@ -125,12 +128,12 @@ class CSVConverter:
         except Exception as e:
             raise CSVConversionError(f"Failed to convert {csv_path.name}: {str(e)}")
 
-    def run(self) -> List[Path]:
+    def run(self) -> list[Path]:
         """
         Batch-convert all matching CSVs to JSON files.
         
         Returns:
-            List of paths to generated JSON files
+            list of paths to generated JSON files
         """
         csv_files = self.find_csv_files()
         json_files = []
@@ -148,7 +151,7 @@ class CSVConverter:
                 
         return json_files
 
-    def _row_to_entry(self, row: Dict[str, str]) -> Dict[str, Any]:
+    def _row_to_entry(self, row: Mapping[str, str]) -> dict[str, Any]:
         """
         Map a CSV row to a payload entry.
         
@@ -199,7 +202,7 @@ class CSVConverter:
             raise ValueError("Detection type ('Detectors' column) is required but missing")
         
         # Base entry
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             'ioc': {
                 'type': ioc_type, 
                 'value': ioc_value
@@ -239,7 +242,7 @@ class CSVConverter:
             entry['mitre_codes'] = codes
             
         # Optional incident
-        incident: Dict[str, str] = {}
+        incident: dict[str, str] = {}
         if event_source := row.get('Event Source', ''):
             incident['type'] = event_source
         if event_id := row.get('Event ID', ''):

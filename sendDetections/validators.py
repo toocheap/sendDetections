@@ -1,8 +1,14 @@
 """
 Data validation for Recorded Future API payloads.
+Uses Python 3.10 type annotations and Pydantic v2 for schema validation.
 """
 
-from typing import Any, Dict, List, Optional, Union, Literal
+# Use standard library typing (Python 3.10+)
+from typing import Any, Optional
+# Collections
+from collections.abc import Sequence, Mapping
+
+# Pydantic imports
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 
@@ -57,8 +63,8 @@ class DataEntry(BaseModel):
     detection: Detection
     timestamp: Optional[str] = Field(None, description="Timestamp in ISO 8601 format")
     incident: Optional[Incident] = None
-    mitre_codes: Optional[List[str]] = None
-    malwares: Optional[List[str]] = None
+    mitre_codes: Optional[list[str]] = None
+    malwares: Optional[list[str]] = None
     
     @model_validator(mode='after')
     def validate_timestamp(self) -> 'DataEntry':
@@ -79,12 +85,12 @@ class ApiOptions(BaseModel):
 
 class ApiPayload(BaseModel):
     """Full API payload model."""
-    data: List[DataEntry] = Field(..., min_length=1)
+    data: list[DataEntry] = Field(..., min_length=1)
     options: Optional[ApiOptions] = None
-    organization_ids: Optional[List[str]] = None
+    organization_ids: Optional[list[str]] = None
 
 
-def validate_payload(payload: Dict[str, Any]) -> Optional[str]:
+def validate_payload(payload: Mapping[str, Any]) -> Optional[str]:
     """
     Validate a payload dictionary for the Detection API using Pydantic models.
     

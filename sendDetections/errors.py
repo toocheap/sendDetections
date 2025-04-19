@@ -6,7 +6,8 @@ Custom exception classes for error handling in the sendDetections package.
 Provides specific, typed exceptions for different error scenarios.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
+from collections.abc import Sequence
 
 
 class SendDetectionsError(Exception):
@@ -19,7 +20,7 @@ class SendDetectionsError(Exception):
 class ApiError(SendDetectionsError):
     """Base class for API-related errors."""
     def __init__(self, message: str, status_code: Optional[int] = None, 
-                 response_data: Optional[Dict[str, Any]] = None):
+                 response_data: Optional[dict[str, Any]] = None):
         self.status_code = status_code
         self.response_data = response_data or {}
         super().__init__(message)
@@ -38,7 +39,7 @@ class ApiAccessDeniedError(ApiError):
 class ApiRateLimitError(ApiError):
     """API rate limit exceeded."""
     def __init__(self, message: str, status_code: Optional[int] = None,
-                 response_data: Optional[Dict[str, Any]] = None,
+                 response_data: Optional[dict[str, Any]] = None,
                  retry_after: Optional[int] = None):
         self.retry_after = retry_after
         super().__init__(message, status_code, response_data)
@@ -66,7 +67,7 @@ class ApiTimeoutError(ApiError):
 
 class PayloadValidationError(SendDetectionsError):
     """Error in payload structure or content validation."""
-    def __init__(self, message: str, field_errors: Optional[List[Dict[str, Any]]] = None):
+    def __init__(self, message: str, field_errors: Optional[list[dict[str, Any]]] = None):
         self.field_errors = field_errors or []
         super().__init__(message)
 

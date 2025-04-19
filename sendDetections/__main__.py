@@ -1,5 +1,7 @@
 """
 Main entry point for the sendDetections package when run as a module.
+
+Uses Python 3.10+ type annotations.
 """
 
 import os
@@ -7,8 +9,9 @@ import sys
 import json
 import traceback
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union
+from typing import Any, Optional
 
 from sendDetections.csv_converter import CSVConverter
 from sendDetections.enhanced_api_client import EnhancedApiClient
