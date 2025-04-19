@@ -103,6 +103,21 @@ def setup_argparse():
         default=3,
         help="Maximum number of retry attempts for API calls (default: 3)"
     )
+    batch_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable progress bars"
+    )
+    batch_parser.add_argument(
+        "--export-metrics",
+        action="store_true",
+        help="Export performance metrics to a JSON file"
+    )
+    batch_parser.add_argument(
+        "--metrics-file",
+        type=str,
+        help="Path to save performance metrics (default: auto-generated)"
+    )
     convert_parser.add_argument(
         "files", 
         nargs="*", 
@@ -372,7 +387,8 @@ async def handle_batch_command(args) -> int:
             api_token=api_token,
             max_concurrent=args.max_concurrent,
             batch_size=args.batch_size,
-            max_retries=args.max_retries
+            max_retries=args.max_retries,
+            show_progress=not args.no_progress
         )
         
         # Expand glob patterns in file arguments
@@ -408,10 +424,20 @@ async def handle_batch_command(args) -> int:
         total_processed = 0
         total_dropped = 0
         
+        # Setup metrics export options
+        metrics_file = None
+        if args.metrics_file:
+            metrics_file = Path(args.metrics_file)
+        
         # Process JSON files
         if json_files:
             logger.info("Processing %d JSON files", len(json_files))
-            json_result = await processor.process_files(json_files, debug=args.debug)
+            json_result = await processor.process_files(
+                json_files, 
+                debug=args.debug,
+                export_metrics=args.export_metrics,
+                metrics_file=metrics_file and metrics_file.with_suffix('.json_metrics.json')
+            )
             
             if "summary" in json_result:
                 summary = json_result["summary"]
@@ -427,7 +453,12 @@ async def handle_batch_command(args) -> int:
         # Process CSV files
         if csv_files:
             logger.info("Processing %d CSV files", len(csv_files))
-            csv_result = await processor.process_csv_files(csv_files, debug=args.debug)
+            csv_result = await processor.process_csv_files(
+                csv_files, 
+                debug=args.debug,
+                export_metrics=args.export_metrics,
+                metrics_file=metrics_file and metrics_file.with_suffix('.csv_metrics.json')
+            )
             
             if "summary" in csv_result:
                 summary = csv_result["summary"]

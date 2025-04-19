@@ -10,14 +10,23 @@ import asyncio
 import json
 import logging
 import os
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Sequence, cast
 from collections.abc import Mapping
+
+from tqdm import tqdm
+from tqdm.asyncio import tqdm_asyncio
 
 from sendDetections.async_api_client import AsyncApiClient
 from sendDetections.csv_converter import CSVConverter
 from sendDetections.errors import (
     ApiError, PayloadValidationError, CSVConversionError
+)
+from sendDetections.performance import (
+    PerformanceMetrics, process_with_progress, process_in_batches,
+    async_measure_time
 )
 
 # Configure logger
@@ -35,7 +44,8 @@ class BatchProcessor:
         api_url: Optional[str] = None,
         max_concurrent: int = 5,
         batch_size: int = 100,
-        max_retries: int = 3
+        max_retries: int = 3,
+        show_progress: bool = True
     ):
         """
         Initialize the batch processor.
@@ -46,12 +56,14 @@ class BatchProcessor:
             max_concurrent: Maximum number of concurrent API requests
             batch_size: Maximum number of detections per API request
             max_retries: Maximum number of retry attempts for API errors
+            show_progress: Whether to display progress bars
         """
         self.api_token = api_token
         self.api_url = api_url
         self.max_concurrent = max_concurrent
         self.batch_size = batch_size
         self.max_retries = max_retries
+        self.show_progress = show_progress
         
         # Initialize the async API client
         self.client = AsyncApiClient(
@@ -61,6 +73,9 @@ class BatchProcessor:
             max_concurrent=max_concurrent
         )
         
+        # Performance metrics
+        self.metrics = PerformanceMetrics()
+        
         logger.debug(
             "BatchProcessor initialized with max_concurrent=%d, batch_size=%d",
             max_concurrent, batch_size
@@ -69,7 +84,9 @@ class BatchProcessor:
     async def process_files(
         self, 
         file_paths: Sequence[Path], 
-        debug: bool = False
+        debug: bool = False,
+        export_metrics: bool = False,
+        metrics_file: Optional[Path] = None
     ) -> dict[str, Any]:
         """
         Process multiple JSON files concurrently.
@@ -77,6 +94,8 @@ class BatchProcessor:
         Args:
             file_paths: Paths to JSON files containing detection payloads
             debug: Whether to enable debug mode
+            export_metrics: Whether to export performance metrics
+            metrics_file: Optional path to save metrics
             
         Returns:
             Aggregated results of all API calls
@@ -88,31 +107,84 @@ class BatchProcessor:
         """
         if not file_paths:
             return {"summary": {"submitted": 0, "processed": 0, "dropped": 0}}
-            
+        
+        # Start measuring performance
+        self.metrics = PerformanceMetrics()
+        self.metrics.start()
+        
         # Load all payloads first to validate JSON
         payloads = []
-        for path in file_paths:
+        total_entities = 0
+        
+        # Load files with progress bar if enabled
+        paths_iter = tqdm(file_paths, desc="Loading files", disable=not self.show_progress)
+        for path in paths_iter:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     payload = json.load(f)
                     payloads.append(payload)
+                    entities_count = len(payload.get("data", []))
+                    total_entities += entities_count
                     logger.debug("Loaded payload from %s with %d detections", 
-                               path, len(payload.get("data", [])))
+                               path, entities_count)
             except FileNotFoundError:
                 logger.error("File not found: %s", path)
+                self.metrics.record_error("FileNotFoundError")
                 raise
             except json.JSONDecodeError as e:
                 logger.error("Invalid JSON in file %s: %s", path, str(e))
+                self.metrics.record_error("JSONDecodeError")
                 raise
         
         # Process all payloads concurrently
-        logger.info("Processing %d payload files", len(payloads))
+        logger.info("Processing %d payload files with %d total detections", 
+                  len(payloads), total_entities)
         
-        results = await self.client.batch_send(
-            payloads, 
-            debug=debug,
-            return_exceptions=True  # Collect exceptions to report afterwards
+        # Set up async processing with progress bar
+        async def process_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], bool, float]:
+            try:
+                start_time = time.time()
+                result = await self.client.send_data(payload, debug=debug)
+                duration = time.time() - start_time
+                
+                # Record successful API call
+                entity_count = len(payload.get("data", []))
+                self.metrics.record_api_call(duration, True, batch_size=entity_count)
+                self.metrics.record_entities(entity_count)
+                
+                return result, True, duration
+            except Exception as e:
+                end_time = time.time()
+                duration = end_time - start_time
+                
+                # Record failed API call
+                self.metrics.record_api_call(duration, False)
+                self.metrics.record_error(type(e).__name__)
+                
+                return {"error": str(e)}, False, duration
+        
+        # Process payloads with progress tracking
+        results = []
+        pbar = tqdm(
+            total=len(payloads), 
+            desc="Processing files", 
+            unit="file",
+            disable=not self.show_progress
         )
+        
+        for payload in payloads:
+            result, success, duration = await process_payload(payload)
+            results.append(result if success else result)
+            
+            # Update progress bar with stats
+            if self.show_progress:
+                pbar.update(1)
+                pbar.set_postfix(
+                    success=f"{self.metrics.success_calls}/{self.metrics.api_calls}",
+                    entities=self.metrics.entities_processed
+                )
+        
+        pbar.close()
         
         # Aggregate results and handle exceptions
         aggregated: dict[str, Any] = {"summary": {"submitted": 0, "processed": 0, "dropped": 0}}
@@ -120,9 +192,10 @@ class BatchProcessor:
         failed = 0
         
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, Exception) or "error" in result:
+                error_str = str(result) if isinstance(result, Exception) else result.get("error", "Unknown error")
                 logger.error("Error processing file %s: %s", 
-                           file_paths[i], str(result))
+                           file_paths[i], error_str)
                 failed += 1
             else:
                 successful += 1
@@ -131,6 +204,21 @@ class BatchProcessor:
                     aggregated["summary"]["submitted"] += summary.get("submitted", 0)
                     aggregated["summary"]["processed"] += summary.get("processed", 0)
                     aggregated["summary"]["dropped"] += summary.get("dropped", 0)
+        
+        # Finalize performance metrics
+        self.metrics.end()
+        self.metrics.log_summary()
+        
+        # Export metrics if requested
+        if export_metrics:
+            metrics_data = self.metrics.get_summary()
+            metrics_path = metrics_file or Path(f"performance_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+            try:
+                with open(metrics_path, "w", encoding="utf-8") as f:
+                    json.dump(metrics_data, f, indent=2)
+                logger.info("Performance metrics exported to %s", metrics_path)
+            except Exception as e:
+                logger.error("Failed to export metrics: %s", str(e))
         
         logger.info(
             "Completed batch processing: %d of %d files successful (%d failed)",
@@ -143,13 +231,18 @@ class BatchProcessor:
             aggregated["summary"]["dropped"]
         )
         
+        # Include performance metrics in the result
+        aggregated["performance"] = self.metrics.get_summary()
+        
         return aggregated
     
     async def process_csv_files(
         self, 
         csv_paths: Sequence[Path],
         debug: bool = False,
-        encoding: str = "utf-8"
+        encoding: str = "utf-8",
+        export_metrics: bool = False,
+        metrics_file: Optional[Path] = None
     ) -> dict[str, Any]:
         """
         Convert and process multiple CSV files concurrently.
@@ -158,6 +251,8 @@ class BatchProcessor:
             csv_paths: Paths to CSV files to convert and send
             debug: Whether to enable debug mode
             encoding: CSV file encoding
+            export_metrics: Whether to export performance metrics
+            metrics_file: Optional path to save metrics
             
         Returns:
             Aggregated results of all API calls
@@ -168,29 +263,86 @@ class BatchProcessor:
         """
         if not csv_paths:
             return {"summary": {"submitted": 0, "processed": 0, "dropped": 0}}
-            
-        # Convert all CSV files to payloads
+        
+        # Start measuring performance
+        self.metrics = PerformanceMetrics()
+        self.metrics.start()
+        
+        # Convert all CSV files to payloads with progress bar
         converter = CSVConverter()
         payloads = []
+        total_entities = 0
         
-        for path in csv_paths:
+        # Convert CSV files with progress bar
+        paths_iter = tqdm(csv_paths, desc="Converting CSV files", disable=not self.show_progress)
+        for path in paths_iter:
             try:
+                conversion_start = time.time()
                 payload = converter.csv_to_payload(path)
+                conversion_time = time.time() - conversion_start
+                
+                entities_count = len(payload.get("data", []))
+                total_entities += entities_count
+                
                 payloads.append(payload)
-                logger.debug("Converted CSV file %s to payload with %d detections", 
-                           path, len(payload.get("data", [])))
+                logger.debug("Converted CSV file %s to payload with %d detections in %.2f seconds", 
+                           path, entities_count, conversion_time)
             except CSVConversionError as e:
                 logger.error("Error converting CSV file %s: %s", path, str(e))
+                self.metrics.record_error("CSVConversionError")
                 raise
                 
         # Process all payloads concurrently
-        logger.info("Processing %d converted CSV files", len(payloads))
+        logger.info("Processing %d converted CSV files with %d total detections", 
+                  len(payloads), total_entities)
         
-        results = await self.client.batch_send(
-            payloads, 
-            debug=debug,
-            return_exceptions=True
+        # Define processing function for each payload
+        async def process_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], bool, float]:
+            try:
+                start_time = time.time()
+                result = await self.client.send_data(payload, debug=debug)
+                duration = time.time() - start_time
+                
+                # Record successful API call
+                entity_count = len(payload.get("data", []))
+                self.metrics.record_api_call(duration, True, batch_size=entity_count)
+                self.metrics.record_entities(entity_count)
+                
+                return result, True, duration
+            except Exception as e:
+                end_time = time.time()
+                duration = end_time - start_time
+                
+                # Record failed API call
+                self.metrics.record_api_call(duration, False)
+                self.metrics.record_error(type(e).__name__)
+                
+                return {"error": str(e)}, False, duration
+        
+        # Process with progress tracking
+        results = []
+        pbar = tqdm(
+            total=len(payloads), 
+            desc="Processing CSV data", 
+            unit="file",
+            disable=not self.show_progress
         )
+        
+        for payload in payloads:
+            result, success, duration = await process_payload(payload)
+            results.append(result if success else result)
+            
+            # Update progress bar with stats
+            if self.show_progress:
+                pbar.update(1)
+                pbar.set_postfix(
+                    success=f"{self.metrics.success_calls}/{self.metrics.api_calls}",
+                    entities=self.metrics.entities_processed,
+                    rate=f"{self.metrics.entities_processed / (time.time() - self.metrics.start_time.timestamp()):.1f}/s" 
+                    if self.metrics.start_time else "0/s"
+                )
+        
+        pbar.close()
         
         # Aggregate results and handle exceptions
         aggregated: dict[str, Any] = {"summary": {"submitted": 0, "processed": 0, "dropped": 0}}
@@ -198,9 +350,10 @@ class BatchProcessor:
         failed = 0
         
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, Exception) or "error" in result:
+                error_str = str(result) if isinstance(result, Exception) else result.get("error", "Unknown error")
                 logger.error("Error processing converted CSV file %s: %s", 
-                           csv_paths[i], str(result))
+                           csv_paths[i], error_str)
                 failed += 1
             else:
                 successful += 1
@@ -209,6 +362,21 @@ class BatchProcessor:
                     aggregated["summary"]["submitted"] += summary.get("submitted", 0)
                     aggregated["summary"]["processed"] += summary.get("processed", 0)
                     aggregated["summary"]["dropped"] += summary.get("dropped", 0)
+        
+        # Finalize performance metrics
+        self.metrics.end()
+        self.metrics.log_summary()
+        
+        # Export metrics if requested
+        if export_metrics:
+            metrics_data = self.metrics.get_summary()
+            metrics_path = metrics_file or Path(f"csv_performance_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+            try:
+                with open(metrics_path, "w", encoding="utf-8") as f:
+                    json.dump(metrics_data, f, indent=2)
+                logger.info("Performance metrics exported to %s", metrics_path)
+            except Exception as e:
+                logger.error("Failed to export metrics: %s", str(e))
         
         logger.info(
             "Completed CSV batch processing: %d of %d files successful (%d failed)",
@@ -220,6 +388,9 @@ class BatchProcessor:
             aggregated["summary"]["processed"],
             aggregated["summary"]["dropped"]
         )
+        
+        # Include performance metrics in the result
+        aggregated["performance"] = self.metrics.get_summary()
         
         return aggregated
     
