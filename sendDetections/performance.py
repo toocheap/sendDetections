@@ -324,21 +324,11 @@ async def process_with_progress(
         result = await task
         results.append(result)
     
-    # Sort results to match input order
-    # Note: This doesn't work directly with as_completed, need an alternative approach
-    # For now, we'll execute tasks in order to maintain ordering
-    ordered_results = []
-    for task in tqdm_asyncio.tqdm(
-        asyncio.as_completed([asyncio.create_task(process_with_semaphore(item)) for item in items]),
-        total=len(items),
-        desc=description,
-        unit=unit,
-        ascii=ascii,
-        leave=leave
-    ):
-        ordered_results.append(await task)
+    # Note: Using as_completed means results might not be in the same order as input
+    # This is acceptable for most use cases where order doesn't matter
+    # If order is important, the caller should handle reordering
     
-    return ordered_results
+    return results
 
 
 async def process_in_batches(
