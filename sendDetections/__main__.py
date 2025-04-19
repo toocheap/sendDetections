@@ -7,6 +7,7 @@ Uses Python 3.10+ type annotations.
 import os
 import sys
 import json
+import asyncio
 import traceback
 import logging
 from collections.abc import Sequence
@@ -15,6 +16,8 @@ from typing import Any, Optional
 
 from sendDetections.csv_converter import CSVConverter
 from sendDetections.enhanced_api_client import EnhancedApiClient
+from sendDetections.async_api_client import AsyncApiClient
+from sendDetections.batch_processor import BatchProcessor
 from sendDetections.config import SAMPLE_DIR
 from sendDetections.logging_config import configure_logging
 from sendDetections.errors import (
@@ -61,6 +64,44 @@ def setup_argparse():
     convert_parser = subparsers.add_parser(
         "convert", 
         help="Convert CSV files to JSON payload format"
+    )
+    
+    # Batch command
+    batch_parser = subparsers.add_parser(
+        "batch",
+        help="Process multiple files with efficient concurrent batch processing"
+    )
+    batch_parser.add_argument(
+        "files",
+        nargs="+",
+        help="JSON or CSV files to process (use *.json or *.csv for multiple files)"
+    )
+    batch_parser.add_argument(
+        "--token", "-t",
+        help="API token (overrides RF_API_TOKEN env var)"
+    )
+    batch_parser.add_argument(
+        "--debug", "-d",
+        action="store_true",
+        help="Enable debug mode (data will not be saved to RF Intelligence Cloud)"
+    )
+    batch_parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=5,
+        help="Maximum number of concurrent requests (default: 5)"
+    )
+    batch_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="Maximum number of detections per batch (default: 100)"
+    )
+    batch_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Maximum number of retry attempts for API calls (default: 3)"
     )
     convert_parser.add_argument(
         "files", 
@@ -309,6 +350,113 @@ def handle_send_command(args) -> int:
         return 1
 
 
+async def handle_batch_command(args) -> int:
+    """
+    Handle the batch command: process multiple files concurrently using async API.
+    
+    Args:
+        args: Command-line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        # Get API token
+        api_token = args.token or os.getenv("RF_API_TOKEN")
+        if not api_token:
+            logger.error("API token is required. Use --token or set RF_API_TOKEN in .env.")
+            return 1
+        
+        # Initialize batch processor
+        processor = BatchProcessor(
+            api_token=api_token,
+            max_concurrent=args.max_concurrent,
+            batch_size=args.batch_size,
+            max_retries=args.max_retries
+        )
+        
+        # Expand glob patterns in file arguments
+        file_paths = []
+        for pattern in args.files:
+            # If the pattern contains a wildcard, expand it
+            if '*' in pattern or '?' in pattern:
+                matches = list(Path('.').glob(pattern))
+                file_paths.extend(matches)
+            else:
+                # Otherwise just add the single path
+                file_paths.append(Path(pattern))
+        
+        if not file_paths:
+            logger.error("No files matched the specified patterns.")
+            return 1
+            
+        logger.info("Found %d files to process", len(file_paths))
+        
+        # Separate JSON and CSV files
+        json_files = [f for f in file_paths if f.suffix.lower() == '.json']
+        csv_files = [f for f in file_paths if f.suffix.lower() == '.csv']
+        
+        json_count = len(json_files)
+        csv_count = len(csv_files)
+        other_count = len(file_paths) - json_count - csv_count
+        
+        if other_count > 0:
+            logger.warning("Ignoring %d files with unsupported extensions", other_count)
+        
+        # Process files according to their type
+        total_submitted = 0
+        total_processed = 0
+        total_dropped = 0
+        
+        # Process JSON files
+        if json_files:
+            logger.info("Processing %d JSON files", len(json_files))
+            json_result = await processor.process_files(json_files, debug=args.debug)
+            
+            if "summary" in json_result:
+                summary = json_result["summary"]
+                total_submitted += summary.get("submitted", 0)
+                total_processed += summary.get("processed", 0)
+                total_dropped += summary.get("dropped", 0)
+                
+                logger.info("JSON files: %d submitted, %d processed, %d dropped",
+                           summary.get("submitted", 0),
+                           summary.get("processed", 0),
+                           summary.get("dropped", 0))
+        
+        # Process CSV files
+        if csv_files:
+            logger.info("Processing %d CSV files", len(csv_files))
+            csv_result = await processor.process_csv_files(csv_files, debug=args.debug)
+            
+            if "summary" in csv_result:
+                summary = csv_result["summary"]
+                total_submitted += summary.get("submitted", 0)
+                total_processed += summary.get("processed", 0)
+                total_dropped += summary.get("dropped", 0)
+                
+                logger.info("CSV files: %d submitted, %d processed, %d dropped",
+                           summary.get("submitted", 0),
+                           summary.get("processed", 0),
+                           summary.get("dropped", 0))
+        
+        # Total summary
+        logger.info("Total: %d submitted, %d processed, %d dropped",
+                   total_submitted, total_processed, total_dropped)
+                   
+        return 0 if total_processed > 0 else 1
+        
+    except ApiAuthenticationError as e:
+        logger.error("Authentication error: %s", e.message)
+        return 1
+    except ApiError as e:
+        logger.error("API error: %s", e.message)
+        return 1
+    except Exception as e:
+        logger.error("Unexpected error during batch processing: %s", str(e), exc_info=True)
+        return 1
+
+
 def handle_convert_send_command(args) -> int:
     """
     Handle the convert-send command: convert CSV files and send them to the API.
@@ -472,6 +620,8 @@ def main() -> int:
             return handle_send_command(args)
         elif args.command == "convert-send":
             return handle_convert_send_command(args)
+        elif args.command == "batch":
+            return asyncio.run(handle_batch_command(args))
         else:
             logger.error("Unknown command: %s", args.command)
             return 1
