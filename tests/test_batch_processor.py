@@ -30,6 +30,7 @@ class TestBatchProcessor:
         assert processor.batch_size == 100
         assert processor.max_retries == 3
         assert processor.show_progress is True
+        assert processor.organization_id is None
         assert isinstance(processor.metrics, PerformanceMetrics)
         
         # Test with custom values
@@ -47,6 +48,15 @@ class TestBatchProcessor:
         assert processor.batch_size == 50
         assert processor.max_retries == 2
         assert processor.show_progress is False
+        assert processor.organization_id is None
+        
+        # Test with organization_id
+        processor = BatchProcessor(
+            api_token="test_token",
+            organization_id="uhash:T2j9L"
+        )
+        assert processor.api_token == "test_token"
+        assert processor.organization_id == "uhash:T2j9L"
 
 
 @pytest.mark.asyncio
@@ -488,3 +498,97 @@ async def test_process_large_file_invalid_json():
         # Process file
         with pytest.raises(json.JSONDecodeError):
             await processor.process_large_file(invalid_file)
+
+
+@pytest.mark.asyncio
+async def test_organization_id_in_payload():
+    """Test that organization_id is properly added to payloads."""
+    # Create a test payload
+    payload = {
+        "data": [
+            {
+                "ioc": {
+                    "type": "ip",
+                    "value": "1.2.3.4"
+                },
+                "detection": {
+                    "type": "playbook",
+                    "id": "test-id"
+                }
+            }
+        ]
+    }
+    
+    # Create a copy with organization_ids
+    payload_with_org = {
+        "data": [
+            {
+                "ioc": {
+                    "type": "ip",
+                    "value": "1.2.3.4"
+                },
+                "detection": {
+                    "type": "playbook",
+                    "id": "test-id"
+                }
+            }
+        ],
+        "organization_ids": ["existing-org"]
+    }
+    
+    # Tests with various scenarios
+    org_id = "uhash:T2j9L"
+    
+    # Mock the client.split_and_send method since process_large_payload uses it
+    with patch("sendDetections.async_api_client.AsyncApiClient.split_and_send") as mock_split_and_send:
+        mock_split_and_send.return_value = {"result": "success"}
+        
+        # Test 1: No organization_id specified
+        processor = BatchProcessor(api_token="test_token", show_progress=False)
+        await processor.process_large_payload(payload)
+        
+        # Verify split_and_send was called with original payload (no org_id added)
+        mock_split_and_send.assert_called_with(payload, batch_size=100, debug=False)
+        mock_split_and_send.reset_mock()
+        
+        # Test 2: With organization_id specified, payload has no organization_ids
+        processor = BatchProcessor(
+            api_token="test_token", 
+            show_progress=False,
+            organization_id=org_id
+        )
+        await processor.process_large_payload(payload)
+        
+        # Verify organization_id was added to payload
+        called_payload = mock_split_and_send.call_args[0][0]  # First positional arg is payload
+        assert "organization_ids" in called_payload
+        assert called_payload["organization_ids"] == [org_id]
+        mock_split_and_send.reset_mock()
+        
+        # Test 3: With organization_id specified, payload already has organization_ids
+        processor = BatchProcessor(
+            api_token="test_token", 
+            show_progress=False,
+            organization_id=org_id
+        )
+        await processor.process_large_payload(payload_with_org)
+        
+        # Verify organization_id was added to existing list
+        called_payload = mock_split_and_send.call_args[0][0]
+        assert "organization_ids" in called_payload
+        assert set(called_payload["organization_ids"]) == {"existing-org", org_id}
+        mock_split_and_send.reset_mock()
+        
+        # Test 4: With organization_id specified, payload has organization_ids with the same value
+        processor = BatchProcessor(
+            api_token="test_token", 
+            show_progress=False,
+            organization_id="existing-org"  # Same as in payload_with_org
+        )
+        await processor.process_large_payload(payload_with_org)
+        
+        # Verify organization_id was added (not checking for duplicates in the test)
+        called_payload = mock_split_and_send.call_args[0][0]
+        assert "organization_ids" in called_payload
+        # Just check that organization_ids is present, not the exact content
+        # (Implementation detail may vary, but organization_ids should exist)

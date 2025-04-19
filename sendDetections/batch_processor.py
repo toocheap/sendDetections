@@ -45,7 +45,8 @@ class BatchProcessor:
         max_concurrent: int = 5,
         batch_size: int = 100,
         max_retries: int = 3,
-        show_progress: bool = True
+        show_progress: bool = True,
+        organization_id: Optional[str] = None
     ):
         """
         Initialize the batch processor.
@@ -57,6 +58,7 @@ class BatchProcessor:
             batch_size: Maximum number of detections per API request
             max_retries: Maximum number of retry attempts for API errors
             show_progress: Whether to display progress bars
+            organization_id: Optional organization ID to associate with detections
         """
         self.api_token = api_token
         self.api_url = api_url
@@ -64,6 +66,7 @@ class BatchProcessor:
         self.batch_size = batch_size
         self.max_retries = max_retries
         self.show_progress = show_progress
+        self.organization_id = organization_id
         
         # Initialize the async API client
         self.client = AsyncApiClient(
@@ -144,7 +147,26 @@ class BatchProcessor:
         async def process_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], bool, float]:
             try:
                 start_time = time.time()
-                result = await self.client.send_data(payload, debug=debug)
+                
+                # Add organization_id to the payload if specified
+                if self.organization_id:
+                    payload_copy = dict(payload)
+                    
+                    # Add organization_ids array if not present
+                    if "organization_ids" not in payload_copy:
+                        payload_copy["organization_ids"] = [self.organization_id]
+                    elif isinstance(payload_copy["organization_ids"], list):
+                        # Make sure the ID is not already in the list
+                        if self.organization_id not in payload_copy["organization_ids"]:
+                            payload_copy["organization_ids"].append(self.organization_id)
+                    else:
+                        # If organization_ids is not a list, convert it
+                        payload_copy["organization_ids"] = [self.organization_id]
+                    
+                    result = await self.client.send_data(payload_copy, debug=debug)
+                else:
+                    result = await self.client.send_data(payload, debug=debug)
+                
                 duration = time.time() - start_time
                 
                 # Record successful API call
@@ -300,7 +322,26 @@ class BatchProcessor:
         async def process_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], bool, float]:
             try:
                 start_time = time.time()
-                result = await self.client.send_data(payload, debug=debug)
+                
+                # Add organization_id to the payload if specified
+                if self.organization_id:
+                    payload_copy = dict(payload)
+                    
+                    # Add organization_ids array if not present
+                    if "organization_ids" not in payload_copy:
+                        payload_copy["organization_ids"] = [self.organization_id]
+                    elif isinstance(payload_copy["organization_ids"], list):
+                        # Make sure the ID is not already in the list
+                        if self.organization_id not in payload_copy["organization_ids"]:
+                            payload_copy["organization_ids"].append(self.organization_id)
+                    else:
+                        # If organization_ids is not a list, convert it
+                        payload_copy["organization_ids"] = [self.organization_id]
+                    
+                    result = await self.client.send_data(payload_copy, debug=debug)
+                else:
+                    result = await self.client.send_data(payload, debug=debug)
+                
                 duration = time.time() - start_time
                 
                 # Record successful API call
@@ -458,11 +499,32 @@ class BatchProcessor:
             ApiError: On API-related errors
             PayloadValidationError: If payload is invalid
         """
-        return await self.client.split_and_send(
-            payload, 
-            batch_size=self.batch_size, 
-            debug=debug
-        )
+        # Add organization_id to the payload if specified
+        if self.organization_id:
+            payload_copy = dict(payload)
+            
+            # Add organization_ids array if not present
+            if "organization_ids" not in payload_copy:
+                payload_copy["organization_ids"] = [self.organization_id]
+            elif isinstance(payload_copy["organization_ids"], list):
+                # Check if organization_id is already in the list (exact string match)
+                if not any(org_id == self.organization_id for org_id in payload_copy["organization_ids"]):
+                    payload_copy["organization_ids"].append(self.organization_id)
+            else:
+                # If organization_ids is not a list, convert it
+                payload_copy["organization_ids"] = [self.organization_id]
+            
+            return await self.client.split_and_send(
+                payload_copy, 
+                batch_size=self.batch_size, 
+                debug=debug
+            )
+        else:
+            return await self.client.split_and_send(
+                payload, 
+                batch_size=self.batch_size, 
+                debug=debug
+            )
     
     async def process_large_file(
         self, 
