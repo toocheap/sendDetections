@@ -32,6 +32,49 @@ def test_async_api_client_init():
     assert client.max_retries == 3
     assert client.retry_delay == 1.0
     assert client.max_concurrent == 5
+    assert client.timeout == 30.0
+    assert client.retry_status_codes == [429, 500, 502, 503, 504]
+    assert client._semaphore is None  # Semaphore is created on first use
+
+
+def test_async_api_client_custom_init():
+    """Test AsyncApiClient initialization with custom parameters."""
+    client = AsyncApiClient(
+        api_token="test_token",
+        api_url="https://custom-api.example.com",
+        max_retries=5,
+        retry_delay=2.0,
+        timeout=60.0,
+        retry_status_codes=[429, 500],
+        max_concurrent=10
+    )
+    assert client.api_token == "test_token"
+    assert client.api_url == "https://custom-api.example.com"
+    assert client.max_retries == 5
+    assert client.retry_delay == 2.0
+    assert client.timeout == 60.0
+    assert client.retry_status_codes == [429, 500]
+    assert client.max_concurrent == 10
+
+
+# Simplified test with direct access
+def test_semaphore_management():
+    """Test direct semaphore property access and management."""
+    # Create client with specific max_concurrent value
+    client = AsyncApiClient(api_token="test_token", max_concurrent=7)
+    
+    # Initially, semaphore is None
+    assert client._semaphore is None
+    
+    # Manually set the semaphore and check it can be accessed
+    test_semaphore = asyncio.Semaphore(7)
+    client._semaphore = test_semaphore
+    assert client._semaphore is test_semaphore
+    
+    # Create a new client and verify defaults
+    default_client = AsyncApiClient(api_token="token")
+    assert default_client._semaphore is None
+    assert default_client.max_concurrent == 5  # Default value
 
 
 # Test validating payload with invalid data
@@ -88,6 +131,62 @@ def test_add_default_options():
     # Test with debug flag
     result = client.add_default_options(payload_without_options, debug=True)
     assert result["options"]["debug"] is True
+
+
+# Test the HTTP error handler directly
+@pytest.mark.asyncio
+async def test_handle_http_error():
+    """Test _handle_http_error method directly."""
+    from sendDetections.async_api_client import AsyncApiClient
+    from sendDetections.errors import (
+        ApiAuthenticationError, ApiAccessDeniedError, 
+        ApiRateLimitError, ApiServerError, ApiClientError
+    )
+    
+    client = AsyncApiClient(api_token="test_token")
+    
+    # Test 401 error
+    with pytest.raises(ApiAuthenticationError) as excinfo:
+        await client._handle_http_error(401, '{"message":"Invalid token"}', {})
+    assert "Authentication failed" in str(excinfo.value)
+    assert excinfo.value.status_code == 401
+    
+    # Test 403 error
+    with pytest.raises(ApiAccessDeniedError) as excinfo:
+        await client._handle_http_error(403, '{"message":"Insufficient permissions"}', {})
+    assert "Access denied" in str(excinfo.value)
+    assert excinfo.value.status_code == 403
+    
+    # Test 429 error with retry-after header
+    with pytest.raises(ApiRateLimitError) as excinfo:
+        await client._handle_http_error(429, '{"message":"Rate limit exceeded"}', {"Retry-After": "60"})
+    assert "Rate limit exceeded" in str(excinfo.value)
+    assert excinfo.value.status_code == 429
+    assert excinfo.value.retry_after == 60
+    
+    # Test 429 error with invalid retry-after header
+    with pytest.raises(ApiRateLimitError) as excinfo:
+        await client._handle_http_error(429, '{"message":"Rate limit exceeded"}', {"Retry-After": "invalid"})
+    assert "Rate limit exceeded" in str(excinfo.value)
+    assert excinfo.value.retry_after is None
+    
+    # Test 500 error
+    with pytest.raises(ApiServerError) as excinfo:
+        await client._handle_http_error(500, '{"message":"Internal server error"}', {})
+    assert "Server error" in str(excinfo.value)
+    assert excinfo.value.status_code == 500
+    
+    # Test other 4xx error
+    with pytest.raises(ApiClientError) as excinfo:
+        await client._handle_http_error(400, '{"message":"Bad request"}', {})
+    assert "API error" in str(excinfo.value)
+    assert excinfo.value.status_code == 400
+    
+    # Test with non-JSON response
+    with pytest.raises(ApiServerError) as excinfo:
+        await client._handle_http_error(500, "Internal error occurred", {})
+    assert "Server error" in str(excinfo.value)
+    assert "Internal error occurred" in str(excinfo.value)
 
 
 # Tests for error handling and custom exceptions
@@ -335,6 +434,73 @@ async def test_async_batch_send_with_exceptions():
         assert isinstance(result[1], ApiConnectionError)
         assert str(result[1]) == "Connection failed"
 
+
+@pytest.mark.asyncio
+async def test_batch_send_with_debug_and_retry_options():
+    """Test batch_send with debugging and retry options."""
+    # Create test payloads
+    payloads = [
+        {
+            "data": [
+                {
+                    "ioc": {
+                        "type": "ip",
+                        "value": "1.2.3.4"
+                    },
+                    "detection": {
+                        "type": "playbook",
+                        "id": "test-id-1"
+                    }
+                }
+            ]
+        },
+        {
+            "data": [
+                {
+                    "ioc": {
+                        "type": "ip",
+                        "value": "5.6.7.8"
+                    },
+                    "detection": {
+                        "type": "playbook",
+                        "id": "test-id-2"
+                    }
+                }
+            ]
+        }
+    ]
+    
+    # Create client
+    client = AsyncApiClient(api_token="test_token")
+    
+    # Mock send_data
+    with patch.object(client, 'send_data') as mock_send_data:
+        mock_send_data.return_value = {
+            "summary": {
+                "submitted": 1, 
+                "processed": 1, 
+                "dropped": 0
+            }
+        }
+        
+        # Test with debug=True and retry=False
+        await client.batch_send(payloads, debug=True, retry=False)
+        
+        # Verify send_data was called with the right parameters
+        assert mock_send_data.call_count == 2
+        
+        # Check first call
+        args1, kwargs1 = mock_send_data.call_args_list[0]
+        assert args1[0] == payloads[0]  # First positional arg is payload
+        assert kwargs1["debug"] is True  # debug param is True
+        assert kwargs1["retry"] is False  # retry param is False
+        
+        # Check second call 
+        args2, kwargs2 = mock_send_data.call_args_list[1]
+        assert args2[0] == payloads[1]  # Second payload
+        assert kwargs2["debug"] is True  # debug param is True
+        assert kwargs2["retry"] is False  # retry param is False
+
         
 @pytest.mark.asyncio
 async def test_async_batch_send_raises_exception():
@@ -410,7 +576,7 @@ def test_batch_processor_init():
     assert isinstance(processor.client, AsyncApiClient)
 
 
-# Test split_and_send method
+# Test split_and_send method with batch partitioning
 @pytest.mark.asyncio
 async def test_split_and_send():
     """Test split_and_send method in AsyncApiClient."""
@@ -470,16 +636,96 @@ async def test_split_and_send():
     # Create client
     client = AsyncApiClient(api_token="test_token")
     
-    # Mock batch_send to return expected responses
-    with patch.object(client, 'batch_send', return_value=batch_responses) as mock_batch_send:
+    # Mock batch_send to return expected responses and capture calls
+    with patch.object(client, 'batch_send') as mock_batch_send:
+        # Configure the mock to return our expected responses
+        mock_batch_send.return_value = batch_responses
+        
+        # Call split_and_send
         result = await client.split_and_send(payload, batch_size=2)
         
-        # Verify the batch_send was called with expected arguments
+        # Verify the batch_send was called once
         mock_batch_send.assert_called_once()
+        
+        # Verify the batch_send was called with a list of the expected batch payloads
+        call_args = mock_batch_send.call_args[0][0]  # First positional arg is batches
+        assert len(call_args) == 2
+        
+        # Check the contents of the batch payloads
+        first_batch = call_args[0]
+        second_batch = call_args[1]
+        
+        # First batch should have 2 items
+        assert len(first_batch["data"]) == 2
+        assert first_batch["data"][0]["ioc"]["value"] == "1.2.3.4"
+        assert first_batch["data"][1]["ioc"]["value"] == "5.6.7.8"
+        
+        # Second batch should have 1 item
+        assert len(second_batch["data"]) == 1
+        assert second_batch["data"][0]["ioc"]["value"] == "example.com"
+        
+        # Both batches should preserve options
+        assert first_batch["options"]["debug"] is True
+        assert second_batch["options"]["debug"] is True
         
         # Verify the result is correctly merged
         assert result["summary"]["submitted"] == 3
         assert result["summary"]["processed"] == 3
+        assert result["summary"]["dropped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_split_and_send_custom_batch_size():
+    """Test split_and_send with custom batch size handling."""
+    # Create a payload with many entries
+    payload = {
+        "data": [
+            {
+                "ioc": {"type": "ip", "value": f"192.168.0.{i}"},
+                "detection": {"type": "playbook", "id": f"test-id-{i}"}
+            }
+            for i in range(1, 26)  # 25 items
+        ],
+        "options": {
+            "debug": False,
+            "summary": True
+        }
+    }
+    
+    # Expected batch responses for 5 batches with 5 items each
+    batch_responses = [
+        {"summary": {"submitted": 5, "processed": 5, "dropped": 0}} for _ in range(5)
+    ]
+    
+    # Create client
+    client = AsyncApiClient(api_token="test_token")
+    
+    # Mock batch_send to return expected responses
+    with patch.object(client, 'batch_send') as mock_batch_send:
+        mock_batch_send.return_value = batch_responses
+        
+        # Call split_and_send with batch_size=5
+        result = await client.split_and_send(payload, batch_size=5)
+        
+        # Verify batch_send was called with the right number of batches
+        mock_batch_send.assert_called_once()
+        batches = mock_batch_send.call_args[0][0]
+        assert len(batches) == 5
+        
+        # Check that each batch has 5 items
+        for i, batch in enumerate(batches):
+            assert len(batch["data"]) == 5
+            # For the first batch, check the values
+            if i == 0:
+                assert batch["data"][0]["ioc"]["value"] == "192.168.0.1"
+                assert batch["data"][4]["ioc"]["value"] == "192.168.0.5"
+            # Preserve options
+            assert batch["options"]["debug"] is False
+            assert batch["options"]["summary"] is True
+        
+        # Verify the merged result
+        assert result["summary"]["submitted"] == 25
+        assert result["summary"]["processed"] == 25
         assert result["summary"]["dropped"] == 0
 
         
